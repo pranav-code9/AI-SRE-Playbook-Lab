@@ -34,9 +34,16 @@ def recurrence_scenario(base: dict, days: int = 30, revision_offset: int = 4, re
         gt["change"]["revision"] += revision_offset
     end = datetime.strptime(s["incident"]["window_end"], "%Y-%m-%dT%H:%M:%SZ")
     # The incident continues until the rollback (a few minutes after the window
-    # ends, once it's approved), then the service recovers.
-    for service, before_after in {"checkout": ("error_rate", 0.004), "payment": ("request_rate", 5.0)}.items():
-        metric, healthy = before_after
+    # ends, once it's approved), then the service recovers. Request rate is
+    # extended too, and not only the metric under test: verification refuses to
+    # call a window a success when there was too little traffic to judge, and a
+    # rollback that merely stopped the traffic would otherwise score as a fix.
+    recovery = {
+        ("checkout", "error_rate"): 0.004,
+        ("checkout", "request_rate"): 5.0,   # users keep shopping throughout
+        ("payment", "request_rate"): 5.0,
+    }
+    for (service, metric), healthy in recovery.items():
         series = s["metrics"][service][metric]
         during = series[-1][1]
         for m in range(1, recovery_minutes + 1):

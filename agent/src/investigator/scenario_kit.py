@@ -22,6 +22,7 @@ OPERATIONS = {
     "payment": "oteldemo.PaymentService/Charge",
     "shipping": "oteldemo.ShippingService/ShipOrder",
     "email": "oteldemo.EmailService/SendOrderConfirmation",
+    "product-catalog": "oteldemo.ProductCatalogService/GetProduct",
 }
 
 
@@ -47,11 +48,17 @@ class TraceBuilder:
         self.spans.append(sp)
         return sid
 
-    def call(self, parent, caller, callee, offset_ms, dur, error=False, server_error=None) -> str:
-        """One RPC: a CLIENT span in the caller and a SERVER span in the callee."""
+    def call(self, parent, caller, callee, offset_ms, dur, error=False, server_error=None, server_dur=None) -> str:
+        """One RPC: a CLIENT span in the caller and a SERVER span in the callee.
+
+        server_error and server_dur default to the client's, but a client that
+        times out sees a failure the server never reports: pass them separately.
+        """
         op = OPERATIONS[callee]
         client = self.span(parent, caller, op, offset_ms, dur, error, "client", peer=callee)
-        self.span(client, callee, op, offset_ms + 1, max(1, dur - 2), error if server_error is None else server_error, "server")
+        self.span(client, callee, op, offset_ms + 1,
+                  max(1, dur - 2) if server_dur is None else server_dur,
+                  error if server_error is None else server_error, "server")
         return client
 
     def done(self) -> dict:
@@ -83,8 +90,11 @@ def retrying_checkout(trace_id: str, start: datetime, attempts: int, timeout_ms:
     t.call(co, "checkout", "cart", 10, 7)
     t.call(co, "checkout", "currency", 20, 3)
     for i in range(attempts):
-        # The client gives up at its deadline; the cancelled server span errors too.
-        t.call(co, "checkout", "payment", 30 + (timeout_ms + 5) * i, timeout_ms, error=True)
+        # The client abandons the attempt at its deadline, but the server keeps
+        # going and charges the card. Matches the recorded lab capture, where
+        # DEADLINE_EXCEEDED client spans sat above successful server spans.
+        t.call(co, "checkout", "payment", 30 + (timeout_ms + 5) * i, timeout_ms,
+               error=True, server_error=False, server_dur=round(timeout_ms * 2.4, 1))
     return t.done()
 
 
@@ -93,6 +103,35 @@ def failing_payment_checkout(trace_id: str, start: datetime) -> dict:
     t.call(co, "checkout", "cart", 10, 6)
     t.call(co, "checkout", "currency", 20, 2)
     t.call(co, "checkout", "payment", 30, 28, error=True)
+    return t.done()
+
+
+def congested_checkout(trace_id: str, start: datetime, queue_ms: float, error: bool) -> dict:
+    """Every dependency answers normally; the time is spent waiting inside checkout.
+
+    The shape of an overloaded service rather than a broken one: no single
+    call is slow, but the gaps between them are, and the deadline the caller
+    loses is the frontend's.
+    """
+    t, co = checkout_trace(trace_id, start, 190 + queue_ms, error)
+    t.call(co, "checkout", "cart", 10 + queue_ms * 0.3, 7)
+    t.call(co, "checkout", "currency", 20 + queue_ms * 0.5, 3)
+    t.call(co, "checkout", "payment", 30 + queue_ms * 0.7, 36)
+    t.call(co, "checkout", "shipping", 70 + queue_ms * 0.9, 10)
+    t.call(co, "checkout", "email", 90 + queue_ms, 57, error=error)
+    return t.done()
+
+
+def slow_dependency_checkout(trace_id: str, start: datetime, service: str, dur: float, error: bool) -> dict:
+    """One dependency is slow or failing; everything else in the order is normal."""
+    t, co = checkout_trace(trace_id, start, 150 + dur, error)
+    t.call(co, "checkout", "cart", 10, 6)
+    t.call(co, "checkout", service, 20, dur, error=error)
+    if not error:
+        t.call(co, "checkout", "currency", 25 + dur, 2)
+        t.call(co, "checkout", "payment", 35 + dur, 34)
+        t.call(co, "checkout", "shipping", 75 + dur, 9)
+        t.call(co, "checkout", "email", 95 + dur, 55)
     return t.done()
 
 

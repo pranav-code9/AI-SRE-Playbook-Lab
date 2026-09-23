@@ -48,13 +48,18 @@ def extract_edges(traces: Iterable[list[dict]]) -> list[Edge]:
 
     A span whose parent belongs to another service is one call from the
     parent's service to the span's service. Calls within a service are ignored.
+
+    An edge counts a call as failed when the *caller* saw it fail. A client
+    timeout leaves a failed CLIENT span above a successful SERVER span, so
+    counting only the callee's status hides exactly the failures that matter.
     """
     edges: dict[tuple[str, str], Edge] = {}
 
-    def add(caller, callee, span):
+    def add(caller, callee, span, caller_span=None):
         edge = edges.setdefault((caller, callee), Edge(caller, callee))
         edge.calls += 1
-        edge.errors += 1 if span.get("error") else 0
+        failed = bool(span.get("error")) or bool(caller_span and caller_span.get("error"))
+        edge.errors += 1 if failed else 0
         edge.operations.add(span["operation"])
 
     for spans in traces:
@@ -63,7 +68,7 @@ def extract_edges(traces: Iterable[list[dict]]) -> list[Edge]:
         for s in spans:
             parent = by_id.get(s.get("parent_id"))
             if parent is not None and parent["service"] != s["service"]:
-                add(parent["service"], s["service"], s)
+                add(parent["service"], s["service"], s, parent)
             elif s.get("kind") == "client" and s["span_id"] not in answered and s.get("peer"):
                 # A call nobody answered (callee down or untraced) still shows the dependency.
                 add(s["service"], s["peer"], s)

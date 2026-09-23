@@ -1,0 +1,135 @@
+{
+ "_about": "Scripted responses for the load-not-fault scenario: traffic quadruples, checkout saturates at its HPA ceiling, and nothing is broken. A harmless banner release sits in the window as bait. The correct behaviour is to refute the release, name no faulty component, and escalate rather than propose a rollback.",
+ "HypothesizeOutput": [
+  {
+   "reasoning": "Unusually, checkout's own request rate has quadrupled rather than staying flat, and every downstream service shows the same multiple. No dependency is erroring: payment is at 0.2 percent and product-catalog at zero. The HPA has hit its ceiling and is reporting ScalingLimited. One release landed at 10:02.",
+   "hypotheses": [
+    {
+     "statement": "Checkout has reached its autoscaling ceiling and has no spare capacity for the traffic it is now receiving",
+     "kind": "root_cause",
+     "component": "checkout",
+     "explains": "H0",
+     "predictions": [
+      "Checkout's request rate rises several-fold across the window",
+      "Latency rises inside checkout while its dependencies stay fast",
+      "The HPA reports being unable to scale further"
+     ]
+    },
+    {
+     "statement": "Release otel-demo revision 4 changed checkout's behaviour",
+     "kind": "root_cause",
+     "component": "otel-demo revision 4",
+     "explains": "H0",
+     "predictions": [
+      "The release diff changes something checkout depends on"
+     ]
+    }
+   ]
+  },
+  {
+   "reasoning": "The release is refuted and the capacity reading is confirmed. There is no faulty component left to hypothesise about.",
+   "hypotheses": []
+  },
+  {
+   "reasoning": "No new explanations.",
+   "hypotheses": []
+  }
+ ],
+ "PlanOutput": [
+  {
+   "reasoning": "The traffic comparison tests H1's central prediction, the release diff tests H2 directly, and a failed trace shows whether the time is spent inside checkout or in a dependency.",
+   "checks": [
+    {
+     "tool": "compare_windows",
+     "args_json": "{\"service\": \"checkout\", \"metric\": \"request_rate\", \"before_start\": \"2026-09-22T09:50:00Z\", \"before_end\": \"2026-09-22T10:05:00Z\", \"after_start\": \"2026-09-22T10:12:00Z\", \"after_end\": \"2026-09-22T10:30:00Z\"}",
+     "hypothesis_ids": ["H1"],
+     "expected": [
+      {"hypothesis_id": "H1", "if_true": "checkout's own request rate rises several-fold"}
+     ]
+    },
+    {
+     "tool": "diff_release",
+     "args_json": "{\"release\": \"otel-demo\", \"revision_a\": 3, \"revision_b\": 4}",
+     "hypothesis_ids": ["H2"],
+     "expected": [
+      {"hypothesis_id": "H2", "if_true": "the diff touches checkout or one of its clients"}
+     ]
+    },
+    {
+     "tool": "summarize_trace",
+     "args_json": "{\"trace_id\": \"err0000\"}",
+     "hypothesis_ids": ["H1"],
+     "expected": [
+      {"hypothesis_id": "H1", "if_true": "no single dependency call is slow"}
+     ]
+    }
+   ]
+  },
+  {
+   "reasoning": "Checkout's own logs should say whether requests are waiting for a worker rather than for a dependency.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"level\": \"warn\"}",
+     "hypothesis_ids": ["H1"],
+     "expected": [
+      {"hypothesis_id": "H1", "if_true": "requests are queueing before they are handled"}
+     ]
+    }
+   ]
+  },
+  {
+   "reasoning": "Re-check the events for any sign of a fault rather than saturation.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"level\": \"warn\"}",
+     "hypothesis_ids": ["H1"],
+     "expected": []
+    }
+   ]
+  }
+ ],
+ "AssessOutput": [
+  {
+   "stances": [
+    {"hypothesis_id": "H1", "evidence_id": "E12", "supports": true, "note": "Checkout's own request rate is up more than fourfold, so the load is real user traffic, not retries"},
+    {"hypothesis_id": "H1", "evidence_id": "E11", "supports": true, "note": "The HPA scaled to its maximum and then reported ScalingLimited nine times"},
+    {"hypothesis_id": "H1", "evidence_id": "E14", "supports": true, "note": "The slow order spends its time between dependency calls, not inside them"},
+    {"hypothesis_id": "H1", "evidence_id": "E5", "supports": true, "note": "Payment is healthy at 0.2% errors despite carrying the same multiple of traffic"},
+    {"hypothesis_id": "H2", "evidence_id": "E13", "supports": false, "note": "Revision 4 changes only BANNER_TEXT on the frontend; it cannot affect checkout's capacity"}
+   ],
+   "updates": [
+    {"hypothesis_id": "H1", "confidence": 0.7, "status": "supported"},
+    {"hypothesis_id": "H2", "confidence": 0.05, "status": "refuted", "refuted_reason": "The only change in the window is a frontend banner string (E13), which does not touch checkout"}
+   ],
+   "timeline": [
+    {"at": "2026-09-22T10:11:00Z", "what": "checkout HPA at maximum replicas, ScalingLimited", "evidence_id": "E11"}
+   ]
+  },
+  {
+   "stances": [
+    {"hypothesis_id": "H1", "evidence_id": "E15", "supports": true, "note": "Checkout logs show requests queued for 812 ms with the worker pool saturated"}
+   ],
+   "updates": [
+    {"hypothesis_id": "H1", "confidence": 0.8}
+   ],
+   "timeline": []
+  }
+ ],
+ "ReportOutput": [
+  {
+   "summary": "Nothing appears to be broken. Checkout's own request rate is up more than fourfold over the window (E12), and every downstream service carries the same multiple without erroring (E5). Checkout scaled to its maximum replicas and has been reporting ScalingLimited since 10:11 (E11), its logs show requests queueing for hundreds of milliseconds before a worker picks them up (E15), and failed orders spend their time between dependency calls rather than inside them (E14). The one release in the window changes a frontend banner string and cannot account for this (E13), so a rollback would remove nothing but capacity. This looks like demand exceeding provisioned capacity rather than a fault, which is a decision for a human: raise checkout's replica ceiling, or shed load.",
+   "open_questions": [
+    "Was a marketing send or similar campaign scheduled for 10:05?",
+    "What is the safe upper bound for checkout's HPA, and what does the database behind it support?",
+    "Is the frontend's two-second deadline on checkout the right one under load?"
+   ],
+   "proposed_actions": [
+    "Raise checkout's HPA maximum, with an owner who can judge the downstream limits (no tool proposed)",
+    "Confirm the traffic source before treating this as an incident"
+   ],
+   "action_proposals": []
+  }
+ ]
+}

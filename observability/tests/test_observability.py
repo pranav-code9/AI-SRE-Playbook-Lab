@@ -9,7 +9,7 @@ from sre_obs.overlap import find_overlaps
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def executed(at, actor="cli:pranav", execution="ex1", release="otel-demo", target=2):
+def executed(at, actor="cli:ic-oncall", execution="ex1", release="otel-demo", target=2):
     return {"event": "executed", "at": at, "actor": actor,
             "data": {"execution_id": execution, "plan": {"release": release, "target_revision": target}}}
 

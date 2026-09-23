@@ -8,7 +8,7 @@ This review is blameless. It asks how the system made this failure possible and 
 
 _The agent's summary, to be checked and rewritten by the team:_
 
-> Release otel-demo revision 7 (10:05) cut checkout's payment timeout from 2s to 40ms and enabled five immediate retries (E13). Normal payment calls now exceed the timeout, so each order makes up to six Charge attempts (E12, E15), multiplying payment traffic about fivefold (E14). Payment slows under the extra load, more calls time out, and checkout errors rise from the moment of the release (E16). Autoscaling and node memory pressure followed (E11).
+> Release otel-demo revision 7 (10:05) cut checkout's payment timeout from 2s to 40ms and enabled five immediate retries (E13). Payment's slowest calls already ran past 40ms, so the tail of every order's Charge attempts began timing out and retrying, up to six attempts each (E12, E15), multiplying payment traffic about fivefold (E14). Payment slows under the extra load, more calls time out, and checkout errors rise from the moment of the release (E16). Autoscaling and node memory pressure followed (E11).
 
 ## Impact
 
@@ -27,7 +27,7 @@ TO WRITE: who was affected, for how long, and how badly. Starting points from th
 | 10:30 | The agent requested approval for otel-demo 7 -> 6 |
 | 10:32 | The incident commander approved the plan |
 | 10:32 | rollback_release executed (otel-demo 7 -> 6), started by the incident commander |
-| 10:43 | Outcome of the action recorded as good by the automatic verification: checkout error_rate 0.36 -> 0.004 (99% drop; needed 50%; already falling 0% before the action) |
+| 10:43 | Outcome of the action recorded as good by the automatic verification: checkout error_rate 0.36 -> 0.004 (needed below 0.01) |
 
 ## How the cause was found
 
@@ -55,7 +55,7 @@ TO WRITE. Facts from the records:
 
 - Approval took 2 minute(s) from request to decision.
 - rollback_release ran at 10:32 UTC.
-- Its outcome was recorded as **good**: checkout error_rate 0.36 -> 0.004 (99% drop; needed 50%; already falling 0% before the action)
+- Its outcome was recorded as **good**: checkout error_rate 0.36 -> 0.004 (needed below 0.01)
 
 ## Action items
 
@@ -86,7 +86,7 @@ sre-policy feedback rollback_release agree|disagree --reason "..."
 | E9 | trace | `search_traces(service=checkout, errors_only=True, limit=5)` | 5 traces for checkout: 5 with errors, duration 350–350 ms. Example ids: err0000, err0001, err0002. |
 | E10 | change | `list_changes()` | 1 change(s) in otel-demo 2026-10-22T09:50:00Z–2026-10-22T10:30:00Z: otel-demo revision 7 at 2026-10-22T10:05:00Z (Upgrade complete). |
 | E11 | k8s | `get_k8s_events()` | 6 events in otel-demo: SuccessfulRescale ×3 (first 2026-10-22T10:10:00Z); FailedScheduling ×3 (first 2026-10-22T10:18:00Z); Evicted ×2 (first 2026-10-22T10:16:00Z). |
-| E12 | trace | `summarize_trace(trace_id=err0001)` | Trace err0001: 19 spans across 5 services, root frontend/POST /api/checkout 350 ms (error). checkout called payment (oteldemo.PaymentService/Charge) 6 times under one parent (6 failed). Slowest span: checkout/oteldemo.CheckoutService/PlaceOrder 330 ms. 15 spans in error. |
+| E12 | trace | `summarize_trace(trace_id=err0001)` | Trace err0001: 19 spans across 5 services, root frontend/POST /api/checkout 350 ms (error). checkout called payment (oteldemo.PaymentService/Charge) 6 times under one parent (6 failed). Slowest span: checkout/oteldemo.CheckoutService/PlaceOrder 330 ms. 9 spans in error. |
 | E13 | change | `diff_release(release=otel-demo, revision_a=6, revision_b=7)` | otel-demo revision 6 → 7: 2 value(s) changed: components.checkout.envOverrides[PAYMENT_MAX_RETRIES].value: '0' → '5'; components.checkout.envOverrides[PAYMENT_TIMEOUT].value: '2s' → '40ms'. |
 | E14 | metric | `compare_windows(service=payment, metric=request_rate, before_start=2026-10-22T09:50:00Z, before_end=2026-10-22T10:05:00Z, after_start=2026-10-22T10:10:00Z, after_end=2026-10-22T10:30:00Z)` | payment request_rate: 5.0 req/s before, 26.0 req/s after (+419%). |
 | E15 | log | `search_logs(service=checkout, level=error)` | 72 log lines from checkout; top messages: “failed to charge card: charge failed after 6 attempts: rpc error: code = DeadlineExceeded desc = co…” ×72. |

@@ -37,8 +37,8 @@ investigate --scenario $SC --scripted agent/scenarios/checkout_retry_storm.scrip
 sre-mcp propose runs/<timestamp>/state.json --scenario $SC --policy $POL --state-dir .sre-policy
 
 sre-policy --policy $POL --state-dir .sre-policy pending --now $NOW
-sre-policy --policy $POL --state-dir .sre-policy approve <approval id> --as cli:pranav --now $NOW
-sre-mcp execute <approval id> --scenario $SC --policy $POL --state-dir .sre-policy --actor cli:pranav
+sre-policy --policy $POL --state-dir .sre-policy approve <approval id> --as-unverified cli:ic-oncall --now $NOW
+sre-mcp execute <approval id> --scenario $SC --policy $POL --state-dir .sre-policy --actor cli:ic-oncall
 
 sre-policy --policy $POL --state-dir .sre-policy audit --now $NOW
 sre-policy --policy $POL --state-dir .sre-policy audit --verify
@@ -46,6 +46,13 @@ sre-policy --policy $POL --state-dir .sre-policy audit --verify
 
 Approver identities come from `roles` in the policy: `cli:<name>` for the
 command line and `slack:<user id>` for Slack. Replace the examples with your own.
+
+The flag is called `--as-unverified` because that is what it is. This CLI cannot
+authenticate anyone; it takes your word for who you are, which is fine in a lab
+and worthless as a control. It has no default, so an approval always records a
+deliberate claim rather than whichever account happened to run the command. In
+production, put something that can actually prove identity in front of the gate
+(SSO, or the Slack app below) and don't expose the CLI path to approvers.
 
 ## Slack
 

@@ -7775,8 +7775,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:08:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -7796,8 +7796,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:08:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -7817,8 +7817,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:08:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]
@@ -7916,8 +7916,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:10:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -7937,8 +7937,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:10:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -7958,8 +7958,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:10:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]
@@ -8057,8 +8057,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:12:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8078,8 +8078,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:12:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8099,8 +8099,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:12:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]
@@ -8198,8 +8198,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:14:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8219,8 +8219,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:14:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8240,8 +8240,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:14:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]
@@ -8339,8 +8339,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:16:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8360,8 +8360,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:16:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8381,8 +8381,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:16:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]
@@ -8480,8 +8480,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:18:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8501,8 +8501,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:18:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8522,8 +8522,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:18:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]
@@ -8621,8 +8621,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:20:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8642,8 +8642,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:20:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8663,8 +8663,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:20:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]
@@ -8762,8 +8762,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:22:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8783,8 +8783,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:22:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8804,8 +8804,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:22:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]
@@ -8903,8 +8903,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:24:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8924,8 +8924,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:24:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -8945,8 +8945,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:24:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]
@@ -9044,8 +9044,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:26:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -9065,8 +9065,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:26:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     },
     {
@@ -9086,8 +9086,8 @@
      "service": "payment",
      "operation": "oteldemo.PaymentService/Charge",
      "start": "2026-09-22T10:26:00Z",
-     "duration_ms": 43,
-     "error": true,
+     "duration_ms": 108.0,
+     "error": false,
      "kind": "server"
     }
    ]

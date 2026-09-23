@@ -1,0 +1,43 @@
+{
+  "bd0b01eeb6": {
+    "id": "bd0b01eeb6",
+    "action": "rollback_release",
+    "plan_hash": "6e49f3135c32ad96",
+    "plan": {
+      "release": "otel-demo",
+      "namespace": "otel-demo",
+      "current_revision": 7,
+      "target_revision": 6,
+      "chart": {
+        "current": "opentelemetry-demo-lab",
+        "target": "opentelemetry-demo-lab"
+      },
+      "app_version": {
+        "current": "lab-1",
+        "target": "lab-1"
+      },
+      "changes": [
+        {
+          "key": "components.checkout.envOverrides[PAYMENT_MAX_RETRIES].value",
+          "before": "5",
+          "after": "0"
+        },
+        {
+          "key": "components.checkout.envOverrides[PAYMENT_TIMEOUT].value",
+          "before": "40ms",
+          "after": "2s"
+        }
+      ],
+      "resources_changed": [
+        "Deployment/checkout"
+      ],
+      "command": "helm rollback otel-demo 6 -n otel-demo --wait"
+    },
+    "reason": "Revision 7 cut checkout's payment timeout to 40ms and enabled five retries (E13); errors began after it (E16)",
+    "requested_by": "agent",
+    "requested_at": "2026-10-22T10:30:00+00:00",
+    "expires_at": "2026-10-22T10:45:00+00:00",
+    "status": "used",
+    "decided_by": "slack:U000EXAMPLE"
+  }
+}

@@ -36,10 +36,11 @@ class ActionRequest(BaseModel):
     actor: str                             # "agent" or "cli:<name>" / "slack:<id>"
     reason: str
     approval_id: Optional[str] = None
-    agent_confidence: Optional[float] = None
+    agent_confidence: Optional[float] = None  # recorded for the audit trail; never a gate
     change_age_minutes: Optional[float] = None
     change_anchored: Optional[bool] = None   # from the investigation: root cause backed by change evidence
     chain_complete: Optional[bool] = None    # from the investigation: why-chain reaches the symptom
+    sole_root_cause: Optional[bool] = None   # from the investigation: no rival root cause still supported
 
     @property
     def hash(self) -> str:
@@ -251,14 +252,15 @@ class Gate:
 
         # autonomous
         au = ap.autonomy
-        checks["confidence_ok"] = req.agent_confidence is not None and req.agent_confidence >= au.min_agent_confidence
         if au.max_change_age_minutes is not None:
             checks["change_recent"] = req.change_age_minutes is not None and req.change_age_minutes <= au.max_change_age_minutes
         if au.require_change_anchor:
             checks["change_anchored"] = bool(req.change_anchored)
         if au.require_complete_chain:
             checks["chain_complete"] = bool(req.chain_complete)
-        failed = [k for k in ("confidence_ok", "change_recent", "change_anchored", "chain_complete")
+        if au.require_sole_root_cause:
+            checks["sole_root_cause"] = bool(req.sole_root_cause)
+        failed = [k for k in ("change_recent", "change_anchored", "chain_complete", "sole_root_cause")
                   if k in checks and not checks[k]]
         if failed:
             return decide("needs_approval", "outside autonomy preconditions: " + ", ".join(failed))

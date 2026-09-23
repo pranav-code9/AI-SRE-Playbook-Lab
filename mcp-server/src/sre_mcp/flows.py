@@ -25,19 +25,26 @@ def _change_age_minutes(state: dict, release: str, now: datetime):
     return (now - max(times)).total_seconds() / 60 if times else None
 
 
-def structural_facts(state: dict) -> tuple[bool, bool]:
-    """(change_anchored, chain_complete) for the concluded root cause, read from
-    the investigation itself, so autonomy never rests on confidence alone."""
+def structural_facts(state: dict) -> tuple[bool, bool, bool]:
+    """(change_anchored, chain_complete, sole_root_cause) for the concluded root
+    cause, read from the investigation itself, so autonomy never rests on the
+    model's own confidence."""
     c = state.get("conclusion") or {}
     hyps = {h["id"]: h for h in state.get("hypotheses", [])}
     evidence = {e["id"]: e for e in state.get("evidence", [])}
-    root = hyps.get(c.get("root_cause_id"))
+    root_id = c.get("root_cause_id")
+    root = hyps.get(root_id)
     chain = c.get("causal_chain") or []
-    chain_complete = bool(chain) and chain[0] == c.get("root_cause_id") and hyps.get(chain[-1], {}).get("kind") == "symptom"
+    chain_complete = bool(chain) and chain[0] == root_id and hyps.get(chain[-1], {}).get("kind") == "symptom"
     anchored = bool(root) and any(
         s["supports"] and evidence.get(s["evidence_id"], {}).get("signal") == "change" and evidence[s["evidence_id"]]["ok"]
         for s in root.get("stances", []))
-    return anchored, chain_complete
+    # A rival is another root-cause hypothesis the investigation never knocked
+    # down. If one is still standing, the case isn't closed enough to act alone.
+    sole = bool(root) and not any(
+        h["id"] != root_id and h.get("kind") == "root_cause" and h.get("status") == "supported"
+        for h in hyps.values())
+    return anchored, chain_complete, sole
 
 
 def propose(state_path: Path, gate, backend, registry, context, notify, now: datetime, out=print) -> int:
@@ -63,7 +70,7 @@ def propose(state_path: Path, gate, backend, registry, context, notify, now: dat
             out(f"{Rollback.name}: {summary}")
             continue
         req = rollback.request(args, plan)
-        req.change_anchored, req.chain_complete = structural_facts(state)
+        req.change_anchored, req.chain_complete, req.sole_root_cause = structural_facts(state)
         d = gate.evaluate(req)
         out(f"{Rollback.name} {plan['release']} {plan['current_revision']} -> {plan['target_revision']}: "
             f"{d.outcome} at rung {d.rung} ({'; '.join(d.reasons)})")

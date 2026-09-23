@@ -1,0 +1,127 @@
+{
+ "_about": "Scripted responses for the two-hop-catalog scenario: the alert is on checkout, payment is flat, and the cause is a product-catalog release that shrank its database connection pool. The agent has to follow the topology past the obvious suspect and roll back a different release.",
+ "HypothesizeOutput": [
+  {
+   "reasoning": "Checkout's own traffic is flat and payment is healthy, so this is not the retry pattern. The one dependency in trouble is product-catalog, which is erroring at 17 percent with a p95 near a second, and the only change in the window is a product-catalog release at 10:03.",
+   "hypotheses": [
+    {
+     "statement": "Product-catalog is slow and failing, so checkout's calls to it exceed their deadline",
+     "kind": "mechanism",
+     "component": "product-catalog",
+     "explains": "H0",
+     "predictions": [
+      "Failed checkout traces contain a long GetProduct span",
+      "Product-catalog's own error rate rises before checkout's"
+     ]
+    },
+    {
+     "statement": "Release product-catalog revision 5 shrank the database connection pool, so requests queue waiting for a pool connection",
+     "kind": "root_cause",
+     "component": "product-catalog revision 5",
+     "explains": "H1",
+     "predictions": [
+      "The release diff changes a connection pool setting",
+      "Product-catalog logs report waiting for a pool connection"
+     ]
+    }
+   ]
+  },
+  {
+   "reasoning": "The chain from the release to the symptom is established; nothing else needs explaining.",
+   "hypotheses": []
+  }
+ ],
+ "PlanOutput": [
+  {
+   "reasoning": "A failed trace shows which dependency consumes the time, the release diff tests the pool change directly, and product-catalog's own errors say why it is slow.",
+   "checks": [
+    {
+     "tool": "summarize_trace",
+     "args_json": "{\"trace_id\": \"err0000\"}",
+     "hypothesis_ids": ["H1"],
+     "expected": [
+      {"hypothesis_id": "H1", "if_true": "one long, failing GetProduct span"}
+     ]
+    },
+    {
+     "tool": "diff_release",
+     "args_json": "{\"release\": \"product-catalog\", \"revision_a\": 4, \"revision_b\": 5}",
+     "hypothesis_ids": ["H2"],
+     "expected": [
+      {"hypothesis_id": "H2", "if_true": "a connection pool value changes"}
+     ]
+    },
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"product-catalog\", \"level\": \"error\"}",
+     "hypothesis_ids": ["H1", "H2"],
+     "expected": [
+      {"hypothesis_id": "H2", "if_true": "errors mention the connection pool"}
+     ]
+    }
+   ]
+  },
+  {
+   "reasoning": "Pin the onset of checkout's errors to the product-catalog release rather than to anything else that morning.",
+   "checks": [
+    {
+     "tool": "compare_windows",
+     "args_json": "{\"service\": \"checkout\", \"metric\": \"error_rate\", \"before_start\": \"2026-09-22T09:50:00Z\", \"before_end\": \"2026-09-22T10:03:00Z\", \"after_start\": \"2026-09-22T10:12:00Z\", \"after_end\": \"2026-09-22T10:30:00Z\"}",
+     "hypothesis_ids": ["H2"],
+     "expected": [
+      {"hypothesis_id": "H2", "if_true": "error rate jumps after 10:03"}
+     ]
+    }
+   ]
+  }
+ ],
+ "AssessOutput": [
+  {
+   "stances": [
+    {"hypothesis_id": "H1", "evidence_id": "E8", "supports": true, "note": "Product-catalog is the only dependency erroring, at 17% with a p95 near a second"},
+    {"hypothesis_id": "H1", "evidence_id": "E5", "supports": true, "note": "Payment is flat at 0.1% errors, so the usual suspect is not involved"},
+    {"hypothesis_id": "H1", "evidence_id": "E12", "supports": true, "note": "The failed order spends almost all of its time in a single failing GetProduct call"},
+    {"hypothesis_id": "H2", "evidence_id": "E13", "supports": true, "note": "Revision 5 cut DB_POOL_MAX from 20 to 2"},
+    {"hypothesis_id": "H2", "evidence_id": "E14", "supports": true, "note": "Product-catalog reports timeouts acquiring a connection with 37 waiters on a pool of 2"},
+    {"hypothesis_id": "H2", "evidence_id": "E10", "supports": true, "note": "The release landed at 10:03, shortly before the errors began"}
+   ],
+   "updates": [
+    {"hypothesis_id": "H1", "confidence": 0.8, "status": "supported"},
+    {"hypothesis_id": "H2", "confidence": 0.85, "status": "supported"}
+   ],
+   "timeline": [
+    {"at": "2026-09-22T10:03:00Z", "what": "product-catalog DB_POOL_MAX 20 -> 2", "evidence_id": "E13"}
+   ]
+  },
+  {
+   "stances": [
+    {"hypothesis_id": "H2", "evidence_id": "E15", "supports": true, "note": "Checkout's error rate rises only after the 10:03 release"}
+   ],
+   "updates": [
+    {"hypothesis_id": "H1", "confidence": 0.85},
+    {"hypothesis_id": "H2", "confidence": 0.9}
+   ],
+   "timeline": []
+  }
+ ],
+ "ReportOutput": [
+  {
+   "summary": "Release product-catalog revision 5 at 10:03 cut the service's database connection pool from twenty connections to two (E13). Product-catalog requests now queue waiting for a connection, with 37 waiters on a pool of 2 (E14), so its p95 rose from 8 ms to about a second and 17 percent of its calls fail (E8). Checkout calls product-catalog on every order and gives up when that call exceeds its deadline (E12), which is why the alert is on checkout rather than on the service that is actually broken. Payment, the usual suspect in this namespace, is flat (E5), and the release is the only change in the window (E10).",
+   "open_questions": [
+    "Was the pool reduced deliberately, and does the database have a connection limit that prompted it?",
+    "Should checkout degrade gracefully when product-catalog is unavailable rather than failing the order?"
+   ],
+   "proposed_actions": [
+    "Roll back product-catalog to revision 4 (requires approval)",
+    "Add a circuit breaker to checkout's product-catalog client"
+   ],
+   "action_proposals": [
+    {
+     "tool": "rollback_release",
+     "args_json": "{\"release\": \"product-catalog\", \"to_revision\": 4}",
+     "reason": "Revision 5 cut DB_POOL_MAX from 20 to 2 (E13) and product-catalog has been waiting on the pool since (E14)"
+    }
+   ]
+  }
+ ]
+}

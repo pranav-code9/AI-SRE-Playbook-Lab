@@ -14,7 +14,7 @@ here.
 | [`agent/`](agent/) | 3 | Working agent; runs offline against a recorded scenario |
 | [`mcp-server/`](mcp-server/) | 4 | Read and actions MCP servers, encoded runbook |
 | [`policies/`](policies/) | 5 | Trust ladder: policy, approvals, audit, kill switch |
-| [`evals/`](evals/) | 6 | Ten scenario variants, grader, CI workflow |
+| [`evals/`](evals/) | 6 | Twelve scenarios (ten retry-storm variants plus two other shapes), grader, CI workflow |
 | [`observability/`](observability/) | 7 | Agent telemetry, alerts, dashboard, SLOs, runbook |
 | [`rollout/`](rollout/) | 8 | Shadow mode, postmortem drafts, impact, 90-day plan |
 

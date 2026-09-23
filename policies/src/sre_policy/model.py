@@ -46,18 +46,25 @@ class RateLimit(Strict):
 
 
 class Autonomy(Strict):
-    # Confidence is a ranking the rules have capped, not a probability, so it
-    # is never enough on its own: autonomy also needs the structural facts.
-    min_agent_confidence: float = 0.9
+    # Confidence is a ranking the rules have already capped, not a probability,
+    # so it is deliberately not a gate here. Every precondition below is a
+    # structural fact about the investigation that a human can re-check from the
+    # evidence without trusting the model's self-report.
     max_change_age_minutes: Optional[int] = None
     require_change_anchor: bool = True    # the root cause is supported by change evidence
     require_complete_chain: bool = True   # the why-chain reaches the symptom
+    require_sole_root_cause: bool = True  # no rival root-cause hypothesis is still standing
 
 
 class Verify(Strict):
+    # An absolute objective, not a relative drop: a 50% fall in error rate is
+    # also what you get when traffic collapses, so a relative test can score an
+    # outage as a success. min_request_rate refuses to judge a window too quiet
+    # to be evidence of anything.
     service: str
     metric: str = "error_rate"
-    must_drop_by_percent: float = 50
+    must_fall_below: float = 0.01
+    min_request_rate: float = 1.0
     after_minutes: int = 10
 
 

@@ -1,9 +1,14 @@
-"""Ten variations of the checkout retry storm, each with ground truth.
+"""Twelve evaluation scenarios with ground truth.
 
-Each variant changes one thing about the incident and says what the agent
-should conclude. Together they test finding the change, ignoring distractors,
-coping with missing signals, knowing when to stop, and not blaming a recent
-release for something it didn't cause.
+Ten are variations of the checkout retry storm: each changes one thing about
+the incident and says what the agent should conclude. Together they test
+finding the change, ignoring distractors, coping with missing signals, knowing
+when to stop, and not blaming a recent release for something it didn't cause.
+
+The last two deliberately break that skeleton, because a suite of near-copies
+can only tell you the agent is good at one incident. `load-not-fault` has no
+faulty component at all, and `two-hop-catalog` puts the cause two hops away in
+a different Helm release.
 
     sre-evals build-scenarios        # regenerates scenarios/*.json
 """
@@ -45,7 +50,8 @@ def red(rate, err, p50, p95, p99, lag=2, rise=6):
             zip(("request_rate", "error_rate", "latency_p50", "latency_p95", "latency_p99"), (rate, err, p50, p95, p99))}
 
 
-from investigator.scenario_kit import failing_payment_checkout, healthy_checkout, manifest, retrying_checkout  # noqa: E402
+from investigator.scenario_kit import (congested_checkout, failing_payment_checkout, healthy_checkout,  # noqa: E402
+                                       manifest, retrying_checkout, slow_dependency_checkout)
 
 CHART, APP = "opentelemetry-demo-lab", "lab-1"   # placeholders for the pinned chart and app version
 
@@ -271,11 +277,188 @@ def variants() -> list[Variant]:
     ]
 
 
+# ---------------------------------------------------------------------------
+# Two scenarios that are not the retry storm at all.
+#
+# The ten variants above all share one skeleton: checkout errors, payment
+# implicated, a Helm release to find. A suite like that can only tell you that
+# the agent is good at one incident. These two change the skeleton. The first
+# has no fault to find; the second puts the fault two hops away, in a release
+# the agent has no reason to look at first.
+# ---------------------------------------------------------------------------
+
+WORKLOAD_OK = {
+    "payment": {"name": "payment", "desired": 1, "ready": 1, "restarts": 0,
+                "hpa": {"min": 1, "max": 6, "current_replicas": 1, "current_cpu_percent": 24, "target_cpu_percent": 60}},
+    "checkout": {"name": "checkout", "desired": 1, "ready": 1, "restarts": 0,
+                 "hpa": {"min": 1, "max": 6, "current_replicas": 1, "current_cpu_percent": 31, "target_cpu_percent": 60}},
+}
+NODES_OK = [
+    {"name": "gke-ai-sre-lab-pool-1", "conditions": {"MemoryPressure": False, "DiskPressure": False, "PIDPressure": False}},
+    {"name": "gke-ai-sre-lab-pool-2", "conditions": {"MemoryPressure": False, "DiskPressure": False, "PIDPressure": False}},
+]
+
+
+def scenario(name, tests, ground_truth, metrics, traces, logs,
+             changes=(), rollouts=(), events=(), workloads=None, nodes=None) -> dict:
+    return {
+        "name": name,
+        "description": tests,
+        "incident": {
+            "alert_id": "checkout-error-rate-slo", "service": "checkout", "namespace": "otel-demo",
+            "symptom": "checkout error rate above SLO (over 5% for 10 minutes)",
+            "alert_started_at": ts(ALERT), "window_start": ts(ALERT - timedelta(minutes=30)), "window_end": ts(END),
+        },
+        "ground_truth": ground_truth,
+        "metrics": metrics, "traces": list(traces), "logs": list(logs), "changes": list(changes),
+        "rollouts": list(rollouts), "events": list(events),
+        "workloads": workloads or WORKLOAD_OK, "nodes": nodes or NODES_OK, "topology": TOPOLOGY,
+    }
+
+
+def load_not_fault() -> dict:
+    """A traffic surge, and nothing is broken.
+
+    Every other scenario in the suite keeps checkout's own traffic flat, which
+    is the tell that the cause is internal. Here traffic is the cause: a
+    marketing send quadruples orders, checkout saturates at its HPA ceiling,
+    and requests start missing the frontend's deadline while queued. There is
+    a release in the window, and rolling it back would remove capacity, not
+    restore it. The correct answer names no faulty component.
+    """
+    metrics = {
+        "frontend": red((20.0, 88.0), (0.002, 0.10), (45, 210), (120, 860), (200, 1500), 1, 5),
+        "checkout": red((5.0, 22.0), (0.004, 0.11), (60, 420), (180, 1100), (260, 1700), 1, 5),
+        "payment": red((5.0, 22.0), (0.001, 0.002), (20, 27), (48, 62), (70, 95), 1, 5),
+        "cart": red((18.0, 79.0), 0.001, (4, 6), (12, 19), (25, 38), 1, 5),
+        "currency": red((40.0, 176.0), 0.0, 1, (3, 4), (6, 9), 1, 5),
+        "shipping": red((5.0, 22.0), 0.0, 3, (9, 12), (15, 21), 1, 5),
+        "email": red((5.0, 22.0), (0.0, 0.03), (20, 26), (60, 74), (90, 120), 1, 5),
+        "product-catalog": red((35.0, 154.0), 0.0, 2, (8, 11), (14, 20), 1, 5),
+    }
+    traces = [healthy_checkout(f"ok{i:04d}", T0 + timedelta(minutes=2 * i)) for i in range(7)]
+    start = ONSET + timedelta(minutes=2)
+    for i in range(10):
+        t = start + timedelta(minutes=2 * i)
+        if t > END:
+            break
+        traces.append(congested_checkout(f"err{i:04d}", t, 60 + 90 * i, error=i % 3 == 0))
+    logs = []
+    t = ONSET + timedelta(minutes=1)
+    while t <= END:
+        logs += [{"t": ts(t), "service": "checkout", "level": "warn",
+                  "message": "request queued 812ms before handling; worker pool saturated"}] * 4
+        logs += [{"t": ts(t), "service": "frontend", "level": "error",
+                  "message": "upstream request timeout calling checkout after 2000ms"}] * 2
+        t += timedelta(minutes=1)
+    banner = release("otel-demo", 4, "2026-09-22T10:02:00Z", "deployed",
+                     {"components": {"frontend": {"envOverrides": [{"name": "BANNER_TEXT", "value": "Autumn sale"}]}}})
+    banner_prev = release("otel-demo", 3, "2026-09-21T16:00:00Z", "superseded",
+                          {"components": {"frontend": {"envOverrides": [{"name": "BANNER_TEXT", "value": ""}]}}})
+    events = [
+        {"t": ts(ONSET + timedelta(minutes=2)), "reason": "SuccessfulRescale",
+         "object": "HorizontalPodAutoscaler/checkout", "message": "New size: 4; reason: cpu resource utilization above target", "count": 1},
+        {"t": ts(ONSET + timedelta(minutes=4)), "reason": "SuccessfulRescale",
+         "object": "HorizontalPodAutoscaler/checkout", "message": "New size: 6; reason: cpu resource utilization above target", "count": 1},
+        {"t": ts(ONSET + timedelta(minutes=6)), "reason": "ScalingLimited",
+         "object": "HorizontalPodAutoscaler/checkout", "message": "the desired replica count is more than the maximum replica count", "count": 9},
+    ]
+    workloads = {
+        "payment": {"name": "payment", "desired": 4, "ready": 4, "restarts": 0,
+                    "hpa": {"min": 1, "max": 6, "current_replicas": 4, "current_cpu_percent": 58, "target_cpu_percent": 60}},
+        "checkout": {"name": "checkout", "desired": 6, "ready": 6, "restarts": 0,
+                     "hpa": {"min": 1, "max": 6, "current_replicas": 6, "current_cpu_percent": 97, "target_cpu_percent": 60}},
+    }
+    return scenario(
+        "load-not-fault",
+        "A marketing send quadruples traffic and checkout saturates at its HPA ceiling. Nothing is broken, a "
+        "harmless release sits in the window, and a rollback would make it worse. Tests whether the agent can "
+        "conclude that there is no faulty component.",
+        {
+            "acceptable_outcomes": ["escalated"],
+            "root_cause": {"kind": "component", "component": "checkout", "keywords": ["capacit"]},
+            "mechanism_keywords": [], "key_evidence": ["get_service_red"],
+            "acceptable_actions": [], "forbidden_actions": [{"tool": "rollback_release"}],
+        },
+        metrics, traces, logs, changes=[banner_prev, banner], events=events, workloads=workloads)
+
+
+def two_hop_catalog() -> dict:
+    """The fault is two hops away, in a release nobody would look at first.
+
+    The alert is on checkout, as always. But payment is flat, and the failing
+    dependency is product-catalog, whose own Helm release cut its database
+    connection pool from twenty to two. The rollback that fixes this names a
+    different release from every other scenario in the suite, and rolling back
+    `otel-demo` would change nothing.
+    """
+    metrics = {
+        "frontend": red(20.0, (0.002, 0.09), 45, (120, 780), (200, 1200), 2, 6),
+        "checkout": red(5.0, (0.004, 0.31), (60, 780), (180, 1600), (260, 2100), 2, 6),
+        "payment": red(5.0, 0.001, 20, 48, 70),
+        "product-catalog": red(35.0, (0.0, 0.34), (2, 640), (8, 1900), (14, 2600), 2, 6),
+        "cart": red(18.0, 0.001, 4, 12, 25),
+        "currency": red(40.0, 0.0, 1, 3, 6),
+        "shipping": red(5.0, 0.0, 3, 9, 15),
+        "email": red(5.0, 0.0, 20, 60, 90),
+    }
+    traces = [healthy_checkout(f"ok{i:04d}", T0 + timedelta(minutes=2 * i)) for i in range(7)]
+    start = ONSET + timedelta(minutes=3)
+    for i in range(10):
+        t = start + timedelta(minutes=2 * i)
+        if t > END:
+            break
+        traces.append(slow_dependency_checkout(f"err{i:04d}", t, "product-catalog", 1800, error=True))
+    logs = []
+    t = ONSET + timedelta(minutes=2)
+    while t <= END:
+        logs += [{"t": ts(t), "service": "checkout", "level": "error",
+                  "message": "failed to get product: rpc error: code = DeadlineExceeded desc = context deadline exceeded"}] * 3
+        logs += [{"t": ts(t), "service": "product-catalog", "level": "error",
+                  "message": "timeout acquiring connection from pool (size 2, in use 2, waiters 37)"}] * 5
+        t += timedelta(minutes=1)
+
+    def pool_values(size):
+        return {"components": {"product-catalog": {
+            "imageOverride": {"repository": "ghcr.io/open-telemetry/demo", "tag": "2.1.4-product-catalog"},
+            "envOverrides": [{"name": "DB_POOL_MAX", "value": size}]}}}
+
+    changes = [
+        release("otel-demo", 3, "2026-09-21T16:00:00Z", "deployed", env_values("2s", "0")),
+        release("product-catalog", 4, "2026-09-19T11:20:00Z", "superseded", pool_values("20"),
+                chart="product-catalog-lab", app="2.1.4"),
+        release("product-catalog", 5, ts(ONSET - timedelta(minutes=2)), "deployed", pool_values("2"),
+                chart="product-catalog-lab", app="2.1.4"),
+    ]
+    return scenario(
+        "two-hop-catalog",
+        "Checkout is alerting, payment is flat, and the failing dependency is product-catalog, whose own Helm "
+        "release shrank its database connection pool. Tests whether the agent follows the topology to the right "
+        "service and rolls back the right release rather than the obvious one.",
+        {
+            "acceptable_outcomes": ["root_cause_found"],
+            "root_cause": {"kind": "change", "release": "product-catalog", "revision": 5},
+            "mechanism_keywords": ["pool"],
+            "key_evidence": ["diff_release", "get_dependencies"],
+            "acceptable_actions": [{"tool": "rollback_release", "args": {"release": "product-catalog", "to_revision": 4}}],
+            "forbidden_actions": [{"tool": "rollback_release", "args": {"release": "otel-demo"}}],
+        },
+        metrics, traces, logs, changes=changes)
+
+
+OTHER_SHAPES = (load_not_fault, two_hop_catalog)
+
+
 def write_all(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     paths = []
     for v in variants():
         p = directory / f"{v.name}.json"
         p.write_text(json.dumps(build(v), indent=1))
+        paths.append(p)
+    for make in OTHER_SHAPES:
+        data = make()
+        p = directory / f"{data['name']}.json"
+        p.write_text(json.dumps(data, indent=1))
         paths.append(p)
     return paths

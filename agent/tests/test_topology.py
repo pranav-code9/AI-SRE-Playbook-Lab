@@ -125,3 +125,31 @@ def test_build_once_samples_dedupes_and_writes(scenario):
     [(query, params)] = driver.log
     assert query == MERGE_EDGES and len(params["edges"]) == 6
     assert "MERGE (s)-[r:RUNS_AS]->(d)" in MERGE_WORKLOADS
+
+
+def test_client_timeout_counts_as_an_edge_failure():
+    """A deadline the caller gave up on, above a server span that succeeded.
+
+    Counting only the callee's status would report this edge as healthy.
+    """
+    spans = [
+        {"span_id": "a", "parent_id": None, "service": "checkout", "kind": "server",
+         "operation": "PlaceOrder", "error": False},
+        {"span_id": "b", "parent_id": "a", "service": "checkout", "kind": "client",
+         "operation": "Charge", "peer": "payment", "error": True},
+        {"span_id": "c", "parent_id": "b", "service": "payment", "kind": "server",
+         "operation": "Charge", "error": False},
+    ]
+    [edge] = extract_edges([spans])
+    assert (edge.caller, edge.callee) == ("checkout", "payment")
+    assert (edge.calls, edge.errors) == (1, 1)
+
+
+def test_retry_storm_edge_is_attributed_to_the_caller(scenario):
+    """The recorded scenario: every payment failure is caller-observed."""
+    traces = [t["spans"] for t in scenario["traces"]]
+    [edge] = [e for e in extract_edges(traces) if e.callee == "payment"]
+    assert (edge.calls, edge.errors) == (67, 60)
+    server_errors = sum(s.get("error", False) for t in traces for s in t
+                        if s["service"] == "payment" and s.get("kind") == "server")
+    assert server_errors == 0, "payment's own spans succeeded; only the caller timed out"

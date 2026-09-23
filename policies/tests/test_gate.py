@@ -49,10 +49,10 @@ def gate(tmp_path, clock, rung="approve", **overrides):
     return Gate(policy_with(rung, **overrides), tmp_path, clock=clock)
 
 
-def req(plan=PLAN, actor="agent", approval_id=None, confidence=0.9, age=25, anchored=True, chain=True):
+def req(plan=PLAN, actor="agent", approval_id=None, confidence=0.9, age=25, anchored=True, chain=True, sole=True):
     return ActionRequest(action="rollback_release", plan=plan, actor=actor, reason="retry storm after revision 3",
                          approval_id=approval_id, agent_confidence=confidence, change_age_minutes=age,
-                         change_anchored=anchored, chain_complete=chain)
+                         change_anchored=anchored, chain_complete=chain, sole_root_cause=sole)
 
 
 def test_lab_policy_is_valid():
@@ -80,23 +80,23 @@ def test_approval_flow(tmp_path, clock):
     a = g.request_approval(req())
     with pytest.raises(PermissionError):
         g.decide_approval(a.id, "cli:mallory", approve=True)
-    g.decide_approval(a.id, "cli:pranav", approve=True)
-    d = g.evaluate(req(approval_id=a.id, actor="cli:pranav"))
-    assert d.outcome == "allowed" and d.reasons[-1] == "approved by cli:pranav"
+    g.decide_approval(a.id, "cli:ic-oncall", approve=True)
+    d = g.evaluate(req(approval_id=a.id, actor="cli:ic-oncall"))
+    assert d.outcome == "allowed" and d.reasons[-1] == "approved by cli:ic-oncall"
 
 
 def test_requester_cannot_approve_own_request(tmp_path, clock):
     g = gate(tmp_path, clock)
-    a = g.request_approval(req(actor="cli:pranav"))
+    a = g.request_approval(req(actor="cli:ic-oncall"))
     with pytest.raises(PermissionError, match="own request"):
-        g.decide_approval(a.id, "cli:pranav", approve=True)
+        g.decide_approval(a.id, "cli:ic-oncall", approve=True)
 
 
 def test_approval_is_bound_to_the_exact_plan(tmp_path, clock):
     radius = {"namespaces": ["otel-demo"], "releases": ["otel-demo"], "max_revisions_back": 5, "max_changed_values": 10}
     g = gate(tmp_path, clock, blast_radius=radius)
     a = g.request_approval(req())
-    g.decide_approval(a.id, "cli:pranav", approve=True)
+    g.decide_approval(a.id, "cli:ic-oncall", approve=True)
     moved_on = {**PLAN, "current_revision": 4}  # someone deployed revision 4 meanwhile
     d = g.evaluate(req(plan=moved_on, approval_id=a.id))
     assert d.outcome == "denied"
@@ -110,13 +110,13 @@ def test_approvals_expire(tmp_path, clock):
     a = g.request_approval(req())
     clock.advance(16)
     with pytest.raises(ValueError, match="expired"):
-        g.decide_approval(a.id, "cli:pranav", approve=True)
+        g.decide_approval(a.id, "cli:ic-oncall", approve=True)
 
 
 def test_approvals_are_single_use(tmp_path, clock):
     g = gate(tmp_path, clock, rate_limit={"max": 5, "per_minutes": 30})
     a = g.request_approval(req())
-    g.decide_approval(a.id, "cli:pranav", approve=True)
+    g.decide_approval(a.id, "cli:ic-oncall", approve=True)
     r = req(approval_id=a.id)
     assert g.evaluate(r).outcome == "allowed"
     g.record_execution(r, "done")
@@ -134,9 +134,9 @@ def test_blast_radius(tmp_path, clock):
 
 def test_kill_switch(tmp_path, clock, monkeypatch):
     g = gate(tmp_path, clock)
-    g.stop("rollback_release", "cli:pranav", "rollbacks misbehaving")
+    g.stop("rollback_release", "cli:ic-oncall", "rollbacks misbehaving")
     assert g.evaluate(req()).reasons[-1] == "kill switch is on for this action"
-    g.resume("rollback_release", "cli:pranav", "fixed")
+    g.resume("rollback_release", "cli:ic-oncall", "fixed")
     assert g.evaluate(req()).outcome == "needs_approval"
     (tmp_path / "STOP").touch()
     assert g.evaluate(req()).outcome == "denied"
@@ -147,7 +147,7 @@ def test_kill_switch(tmp_path, clock, monkeypatch):
 
 def test_autonomous_preconditions_and_rate_limit(tmp_path, clock):
     g = gate(tmp_path, clock, "autonomous")
-    assert g.evaluate(req(confidence=0.7)).outcome == "needs_approval"
+    assert g.evaluate(req(sole=False)).outcome == "needs_approval"
     assert g.evaluate(req(age=240)).outcome == "needs_approval"
     r = req()
     assert g.evaluate(r).outcome == "allowed"
@@ -166,7 +166,7 @@ def test_bad_outcome_demotes_one_rung(tmp_path, clock):
     assert g.evaluate(r).outcome == "denied"  # rate limit still applies
     clock.advance(31)
     assert g.evaluate(r).outcome == "needs_approval"
-    g.reset_demotion("rollback_release", "cli:pranav", "reviewed")
+    g.reset_demotion("rollback_release", "cli:ic-oncall", "reviewed")
     assert g.effective_rung("rollback_release") == Rung.AUTONOMOUS
 
 
@@ -190,7 +190,7 @@ def test_audit_chain_detects_tampering(tmp_path, clock):
 def test_readiness_counts_the_track_record(tmp_path, clock):
     g = gate(tmp_path, clock, "suggest")
     for verdict in ["agree"] * 9 + ["disagree"]:
-        g.audit.append("suggestion_reviewed", "cli:pranav", "rollback_release", {"verdict": verdict})
+        g.audit.append("suggestion_reviewed", "cli:ic-oncall", "rollback_release", {"verdict": verdict})
     r = readiness(g, "rollback_release", eval_pass_rate=0.97)
     assert all(c.ok for c in r["approve"])
     assert {c.name: c.ok for c in r["autonomous"]} == {
@@ -203,13 +203,35 @@ def test_verify_records_outcomes(tmp_path, clock):
     assert verify_execution(g, execution, lambda *a: 0.3) == "pending"
     clock.advance(11)
     def measure(service, metric, start, end):
-        return 0.34 if end <= T0 else 0.01   # steady before, recovered after
+        if metric == "request_rate":
+            return 5.0
+        return 0.34 if end <= T0 else 0.005   # steady before, back under the SLO after
 
     assert verify_execution(g, execution, measure) == "good"
+
+    def still_broken(service, metric, start, end):
+        return 5.0 if metric == "request_rate" else 0.3
+
     execution2 = g.record_execution(req(), "done")
     clock.advance(11)
-    assert verify_execution(g, execution2, lambda *a: 0.3) == "bad"
+    assert verify_execution(g, execution2, still_broken) == "bad"
     assert g.effective_rung("rollback_release") == Rung.APPROVE
+
+
+def test_an_outage_that_silences_traffic_is_not_a_success(tmp_path, clock):
+    """The reason the objective is absolute and volume-gated: with a relative
+    target, driving traffic to zero scores as a fix."""
+    g = gate(tmp_path, clock, "autonomous")
+    execution = g.record_execution(req(), "done")
+    clock.advance(11)
+
+    def collapsed(service, metric, start, end):
+        if metric == "request_rate":
+            return 8.0 if end <= T0 else 0.1   # nothing is getting through
+        return 0.34 if end <= T0 else 0.0      # so nothing is failing, either
+
+    assert verify_execution(g, execution, collapsed) == "inconclusive"
+    assert g.effective_rung("rollback_release") == Rung.AUTONOMOUS
 
 
 def test_env_kill_switch_is_not_left_on():
@@ -230,11 +252,14 @@ def test_unknown_or_large_resource_changes_are_outside_the_blast_radius(tmp_path
     assert g.evaluate(req(plan=many)).outcome == "denied"
 
 
-def test_confidence_alone_never_earns_autonomy(tmp_path, clock):
+def test_autonomy_rests_on_structural_facts_not_confidence(tmp_path, clock):
     g = gate(tmp_path, clock, "autonomous")
     assert g.evaluate(req(confidence=0.99, anchored=False)).outcome == "needs_approval"
     assert g.evaluate(req(confidence=0.99, chain=False)).outcome == "needs_approval"
-    assert g.evaluate(req(confidence=0.99)).outcome == "allowed"
+    assert g.evaluate(req(confidence=0.99, sole=False)).outcome == "needs_approval"
+    # A low self-report is not a veto either, because the gate never reads it.
+    assert g.evaluate(req(confidence=0.1)).outcome == "allowed"
+    assert "confidence_ok" not in g.evaluate(req()).checks
 
 
 def test_recovery_that_started_before_the_action_is_not_credited(tmp_path, clock):
@@ -243,11 +268,13 @@ def test_recovery_that_started_before_the_action_is_not_credited(tmp_path, clock
     clock.advance(11)
 
     def measure(service, metric, start, end):
+        if metric == "request_rate":
+            return 5.0
         if end <= T0 - timedelta(minutes=5):
             return 0.34          # early in the window before the action
         if end <= T0:
-            return 0.15          # already falling on its own
-        return 0.01
+            return 0.005         # already back under the objective on its own
+        return 0.005
 
     assert verify_execution(g, execution, measure) == "inconclusive"
     assert g.effective_rung("rollback_release") == Rung.AUTONOMOUS   # not demoted, not credited

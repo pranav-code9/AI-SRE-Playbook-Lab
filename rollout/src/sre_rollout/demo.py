@@ -71,7 +71,7 @@ def run(out_dir: Path, approve_after_min: int = 2, agent_min: int = 4, human_min
     [approval] = gate.pending()
     now["t"] += timedelta(minutes=approve_after_min)
     gate.decide_approval(approval.id, "slack:U000EXAMPLE", approve=True)
-    flows.execute(approval.id, gate, actions, registry, context, "cli:pranav", out=log.append)
+    flows.execute(approval.id, gate, actions, registry, context, "cli:ic-oncall", out=log.append)
     now["t"] += timedelta(minutes=11)
     execution = next(e["data"]["execution_id"] for e in gate.audit.entries() if e["event"] == "executed")
     flows.verify(execution, gate, backends, out=log.append)

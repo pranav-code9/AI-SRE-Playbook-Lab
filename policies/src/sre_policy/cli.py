@@ -2,7 +2,7 @@
 
     sre-policy check                         validate the policy file
     sre-policy pending                       approval requests waiting
-    sre-policy approve <id> [--as cli:name]  approve a plan (deny works the same)
+    sre-policy approve <id> --as-unverified cli:name   approve a plan (deny works the same)
     sre-policy audit [--verify]              readable audit trail; check the hash chain
     sre-policy stop <action> --reason ...    kill switch for one action (resume undoes it)
     sre-policy outcome <execution> good|bad|reverted --reason ...
@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import argparse
-import getpass
 import os
 import sys
 from datetime import datetime
@@ -28,13 +27,22 @@ from sre_policy.readiness import readiness
 DEFAULT_POLICY = Path(__file__).resolve().parents[2] / "trust-ladder.yaml"
 DEFAULT_STATE = Path(os.environ.get("SRE_POLICY_STATE", Path.cwd() / ".sre-policy"))
 
+# Commands that write an actor into the audit trail. None of them may guess.
+NEEDS_IDENTITY = {"approve", "deny", "stop", "resume", "reset-demotion", "outcome", "feedback"}
+
 
 def _parse(argv):
     p = argparse.ArgumentParser(prog="sre-policy", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--policy", default=str(DEFAULT_POLICY))
     p.add_argument("--state-dir", default=str(DEFAULT_STATE))
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--as", dest="identity", default=f"cli:{getpass.getuser()}", help="who is acting")
+    # This CLI cannot authenticate anybody: it takes the caller's word for who
+    # they are. That is fine for a lab and unacceptable in production, so the
+    # flag is named to make its weakness impossible to miss and has no default.
+    # Put an authenticating front end (SSO, or the Slack app in this package) in
+    # front of the gate before anyone's approval carries real weight.
+    common.add_argument("--as-unverified", dest="identity", default=None,
+                        help="LAB ONLY: the identity to act as, unauthenticated and taken on trust")
     common.add_argument("--now", help="ISO time to use as 'now' (replaying a recorded incident); default: real time")
     sub = p.add_subparsers(dest="cmd", required=True)
     _add = sub.add_parser
@@ -69,6 +77,10 @@ def _parse(argv):
 
 def main(argv=None) -> int:
     a = _parse(argv if argv is not None else sys.argv[1:])
+    if a.cmd in NEEDS_IDENTITY and not a.identity:
+        print(f"Not recorded: {a.cmd} writes who acted to the audit trail. "
+              "Say who with --as-unverified cli:<name>.", file=sys.stderr)
+        return 1
     policy = load_policy(a.policy)
     clock = None
     if a.now:

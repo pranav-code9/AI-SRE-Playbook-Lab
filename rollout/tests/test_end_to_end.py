@@ -78,7 +78,7 @@ def test_the_recurrence_end_to_end(world):
     # 3. The incident commander approves from Slack two minutes later; the on-call engineer runs it.
     w["now"]["t"] += timedelta(minutes=2)
     w["gate"].decide_approval(approval.id, "slack:U000EXAMPLE", approve=True)
-    assert flows.execute(approval.id, w["gate"], w["actions"], w["registry"], w["context"], "cli:pranav",
+    assert flows.execute(approval.id, w["gate"], w["actions"], w["registry"], w["context"], "cli:ic-oncall",
                          out=lines.append) == 0
     assert w["actions"].performed == [("otel-demo", "otel-demo", 6)]
 

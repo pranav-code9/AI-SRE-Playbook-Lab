@@ -73,12 +73,15 @@ Measure = Callable[[str, str, datetime, datetime], Optional[float]]
 def verify_execution(gate: Gate, execution_id: str, measure: Measure) -> Literal["good", "bad", "inconclusive", "pending"]:
     """Did the action fix what it was meant to fix?
 
-    Compares the policy's verify metric before the execution with the second
-    half of the window after it (the first half is the rollout itself). Two
-    guards keep it honest about attribution: if the metric was already falling
-    before the action, the result is inconclusive rather than a success; and if
-    the metric can't be measured, the result is bad, because an action that
-    can't show it worked shouldn't keep its rung. Bad outcomes demote.
+    The test is absolute: the metric must end up below `must_fall_below`, in its
+    own units. A relative target such as "halve the error rate" is easy to hit
+    for the wrong reason, because an outage that drives traffic to zero halves
+    it too. Three guards keep the verdict honest: a window quieter than
+    `min_request_rate` is inconclusive, because there isn't enough traffic to
+    judge; a metric that was already falling before the action is inconclusive,
+    because the recovery may not be the action's doing; and a metric that can't
+    be measured at all is bad, because an action that can't show it worked
+    shouldn't keep its rung. Bad outcomes demote.
     """
     executed = next((e for e in gate.audit.entries()
                      if e["event"] == "executed" and e["data"].get("execution_id") == execution_id), None)
@@ -95,17 +98,26 @@ def verify_execution(gate: Gate, execution_id: str, measure: Measure) -> Literal
     early = measure(v.service, v.metric, at - span, at - span / 2)
     late = measure(v.service, v.metric, at - span / 2, at)
     after = measure(v.service, v.metric, at + span / 2, at + span)
-    if before is None or after is None or before <= 0:
+    if before is None or after is None:
         note = f"couldn't measure {v.service} {v.metric} (before {before}, after {after})"
         gate.record_outcome(execution_id, "bad", "verifier", note)
         return "bad"
-    drop = (before - after) / before * 100
-    trend = ((early - late) / early * 100) if (early and late is not None and early > 0) else 0.0
-    note = (f"{v.service} {v.metric} {before:.4g} -> {after:.4g} ({drop:.0f}% drop; needed {v.must_drop_by_percent:.0f}%; "
-            f"already falling {trend:.0f}% before the action)")
-    if drop >= v.must_drop_by_percent and trend >= v.must_drop_by_percent / 2:
+
+    rate = measure(v.service, "request_rate", at + span / 2, at + span)
+    note = f"{v.service} {v.metric} {before:.4g} -> {after:.4g} (needed below {v.must_fall_below:.4g})"
+    if rate is None or rate < v.min_request_rate:
+        # Too quiet to be evidence. Recovery and total outage look identical here.
+        note += f"; only {rate if rate is not None else 0:.3g} req/s, below the {v.min_request_rate:.3g} req/s floor"
+        gate.record_outcome(execution_id, "inconclusive", "verifier", note)
+        return "inconclusive"
+
+    met = after <= v.must_fall_below
+    falling_already = (early is not None and late is not None and early > 0
+                       and late <= v.must_fall_below < early)
+    if met and falling_already:
+        note += "; already below the objective before the action"
         outcome = "inconclusive"   # it was recovering anyway: don't credit the action
     else:
-        outcome = "good" if drop >= v.must_drop_by_percent else "bad"
+        outcome = "good" if met else "bad"
     gate.record_outcome(execution_id, outcome, "verifier", note)
     return outcome

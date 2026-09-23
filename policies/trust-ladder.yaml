@@ -15,7 +15,7 @@ version: 1
 
 roles:
   incident-commander:
-    - cli:pranav          # CLI approver name (example)
+    - cli:ic-oncall       # CLI approver name (example)
     - slack:U000EXAMPLE   # Slack user id (example)
 
 defaults:
@@ -36,14 +36,15 @@ actions:
       max: 1
       per_minutes: 30
     autonomy:                     # consulted only at rung `autonomous`
-      min_agent_confidence: 0.9   # a capped ranking, not a probability: never enough alone
       max_change_age_minutes: 60  # the release being undone landed recently
       require_change_anchor: true # root cause backed by change evidence
       require_complete_chain: true
+      require_sole_root_cause: true  # no rival root-cause hypothesis still stands
     verify:                       # checked after execution; a failure demotes
       service: checkout
       metric: error_rate
-      must_drop_by_percent: 50
+      must_fall_below: 0.01       # absolute: back under the 1% SLO, not merely lower
+      min_request_rate: 2.0       # below this the window is too quiet to judge
       after_minutes: 10
     promotion:
       to_approve:

@@ -50,7 +50,7 @@ def test_approve_rung_over_mcp(tmp_path, scenario, registry, context, now):
             requested = await c.call_tool("request_rollback_approval", args)
             approval_id = requested.structured_content["data"]["approval_id"]
             early = await c.call_tool("rollback_release", {**args, "dry_run": False, "approval_id": approval_id})
-            gate.decide_approval(approval_id, "cli:pranav", approve=True)
+            gate.decide_approval(approval_id, "cli:ic-oncall", approve=True)
             done = await c.call_tool("rollback_release", {**args, "dry_run": False, "approval_id": approval_id})
             return names, blocked, requested, early, done
 
@@ -77,13 +77,17 @@ def test_suggest_rung_never_executes(tmp_path, scenario, registry, context, now)
     assert backend.performed == []
 
 
-def agent_state(tmp_path, confidence=0.9, anchored=True):
+def agent_state(tmp_path, confidence=0.9, anchored=True, rival=False):
     stance = {"evidence_id": "E13", "supports": True, "note": "diff"}
+    hypotheses = [{"id": "H0", "kind": "symptom", "stances": []},
+                  {"id": "H3", "kind": "root_cause", "status": "supported", "stances": [stance] if anchored else []}]
+    if rival:
+        # A second explanation the investigation never knocked down.
+        hypotheses.append({"id": "H4", "kind": "root_cause", "status": "supported", "stances": []})
     state = {
         "conclusion": {"confidence": confidence, "root_cause_id": "H3", "causal_chain": ["H3", "H0"], "action_proposals": [
             {"tool": "rollback_release", "args": {"release": "otel-demo", "to_revision": 2}, "reason": REASON}]},
-        "hypotheses": [{"id": "H0", "kind": "symptom", "stances": []},
-                       {"id": "H3", "kind": "root_cause", "stances": [stance] if anchored else []}],
+        "hypotheses": hypotheses,
         "evidence": [{"id": "E13", "signal": "change", "ok": True}],
         "timeline": [{"at": "2026-09-22T10:05:00Z", "what": "otel-demo revision 3 deployed", "evidence_id": "E10"}],
     }
@@ -98,8 +102,8 @@ def test_propose_approve_execute(tmp_path, scenario, registry, context, now):
     flows.propose(agent_state(tmp_path), gate, backend, registry, context, notified.append, now, out=lines.append)
     assert "needs_approval at rung approve" in lines[0]
     [approval] = gate.pending()
-    gate.decide_approval(approval.id, "cli:pranav", approve=True)
-    assert flows.execute(approval.id, gate, backend, registry, context, actor="cli:pranav", out=lines.append) == 0
+    gate.decide_approval(approval.id, "cli:ic-oncall", approve=True)
+    assert flows.execute(approval.id, gate, backend, registry, context, actor="cli:ic-oncall", out=lines.append) == 0
     assert backend.performed == [("otel-demo", "otel-demo", 2)]
 
 
@@ -111,8 +115,8 @@ def test_propose_at_autonomous_executes_within_preconditions(tmp_path, scenario,
 
     gate2, backend2, _, _ = make(tmp_path / "st2", scenario, registry, context, now, rung="autonomous")
     lines = []
-    flows.propose(agent_state(tmp_path, confidence=0.8), gate2, backend2, registry, context, None, now, out=lines.append)
-    assert "needs_approval" in lines[0] and backend2.performed == []
+    flows.propose(agent_state(tmp_path, rival=True), gate2, backend2, registry, context, None, now, out=lines.append)
+    assert "needs_approval" in lines[0] and "sole_root_cause" in lines[0] and backend2.performed == []
 
 
 def test_verify_demotes_after_a_bad_rollback(tmp_path, scenario, registry, context, now):
@@ -134,6 +138,12 @@ def test_autonomy_needs_the_structural_facts_not_just_confidence(tmp_path, scena
                   out=lines.append)
     assert "needs_approval" in lines[0] and "change_anchored" in lines[0] and backend.performed == []
 
+    # The converse: a modest self-report is no obstacle, because nothing reads it.
+    gate2, backend2, _, _ = make(tmp_path / "st2", scenario, registry, context, now, rung="autonomous")
+    lines = []
+    flows.propose(agent_state(tmp_path, confidence=0.4), gate2, backend2, registry, context, None, now, out=lines.append)
+    assert "allowed at rung autonomous" in lines[0]
+
 
 def test_plan_shows_chart_and_rendered_resources(scenario, registry, context):
     from sre_mcp.actions import RollbackArgs
@@ -147,7 +157,7 @@ def test_a_stale_plan_is_not_executed(tmp_path, scenario, registry, context, now
     gate, backend, _, _ = make(tmp_path / "st", scenario, registry, context, now)
     flows.propose(agent_state(tmp_path), gate, backend, registry, context, None, now, out=lambda _: None)
     [approval] = gate.pending()
-    gate.decide_approval(approval.id, "cli:pranav", approve=True)
+    gate.decide_approval(approval.id, "cli:ic-oncall", approve=True)
     real = backend.current_revision
     calls = {"n": 0}
 
@@ -156,5 +166,5 @@ def test_a_stale_plan_is_not_executed(tmp_path, scenario, registry, context, now
         return real(ns, release) if calls["n"] == 1 else 4
     backend.current_revision = moving
     lines = []
-    assert flows.execute(approval.id, gate, backend, registry, context, "cli:pranav", out=lines.append) == 1
+    assert flows.execute(approval.id, gate, backend, registry, context, "cli:ic-oncall", out=lines.append) == 1
     assert "moved on" in lines[0] and backend.performed == []
