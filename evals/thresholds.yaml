@@ -1,0 +1,15 @@
+# The evaluation bar for each rung of the trust ladder (Chapter 5).
+# An action's promotion also needs its real-world track record; this is the
+# half of the evidence that replayed incidents can provide.
+suggest:
+  min_pass_rate: 0.6
+  max_confidently_wrong: 2
+approve:
+  min_pass_rate: 0.8
+  min_pass_rate_lower_bound: 0.6
+  max_confidently_wrong: 0
+autonomous:
+  min_pass_rate: 0.95
+  min_pass_rate_lower_bound: 0.85
+  max_confidently_wrong: 0
+  require_every_scenario_every_trial: true

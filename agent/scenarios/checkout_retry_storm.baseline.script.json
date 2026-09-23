@@ -1,0 +1,41 @@
+{
+ "_about": "Scripted model responses for the Chapter 3 baseline (investigate --no-structural-rules). They reproduce the common first-attempt failure: the model blames payment. Evidence ids assume the baseline triage, which doesn't list changes.",
+ "HypothesizeOutput": [
+  {
+   "reasoning": "Checkout is failing and payment, its dependency, has much higher latency. Payment looks like the problem.",
+   "hypotheses": [
+    {"statement": "The payment service is degraded, so checkout's calls to it fail", "kind": "root_cause", "component": "payment", "explains": "H0",
+     "predictions": ["Payment latency is elevated", "Failed checkouts show failing Charge calls"]}
+   ]
+  }
+ ],
+ "PlanOutput": [
+  {
+   "reasoning": "Confirm with a failed trace and payment's latency trend.",
+   "checks": [
+    {"tool": "summarize_trace", "args_json": "{\"trace_id\": \"err0001\"}", "hypothesis_ids": ["H1"],
+     "expected": [{"hypothesis_id": "H1", "if_true": "Charge calls fail"}]},
+    {"tool": "compare_windows", "args_json": "{\"service\": \"payment\", \"metric\": \"latency_p95\", \"before_start\": \"2026-09-22T09:50:00Z\", \"before_end\": \"2026-09-22T10:05:00Z\", \"after_start\": \"2026-09-22T10:10:00Z\", \"after_end\": \"2026-09-22T10:30:00Z\"}", "hypothesis_ids": ["H1"],
+     "expected": [{"hypothesis_id": "H1", "if_true": "payment p95 rises sharply"}]}
+   ]
+  }
+ ],
+ "AssessOutput": [
+  {
+   "stances": [
+    {"hypothesis_id": "H1", "evidence_id": "E5", "supports": true, "note": "Payment latency is elevated"},
+    {"hypothesis_id": "H1", "evidence_id": "E11", "supports": true, "note": "Charge calls to payment fail in the failed checkout"},
+    {"hypothesis_id": "H1", "evidence_id": "E12", "supports": true, "note": "Payment p95 latency rose sharply"}
+   ],
+   "updates": [{"hypothesis_id": "H1", "confidence": 0.9, "status": "supported"}],
+   "timeline": []
+  }
+ ],
+ "ReportOutput": [
+  {
+   "summary": "The payment service is degraded: its latency rose sharply (E12) and checkout's calls to it fail (E11), so orders fail.",
+   "open_questions": ["Why is payment slow?"],
+   "proposed_actions": ["Page the payments team", "Scale up payment"]
+  }
+ ]
+}

@@ -1,0 +1,14 @@
+# The "routine release" that causes the incident.
+#
+# Helm replaces lists rather than merging them, so this file must set BOTH
+# variables, not just the one that changes.
+#
+# Set PAYMENT_TIMEOUT just below the p95 latency of checkout -> payment Charge
+# calls measured during a healthy baseline run.
+components:
+  checkout:
+    envOverrides:
+      - name: PAYMENT_TIMEOUT
+        value: "CHANGE_ME"   # e.g. "40ms"; below measured p95
+      - name: PAYMENT_MAX_RETRIES
+        value: "5"

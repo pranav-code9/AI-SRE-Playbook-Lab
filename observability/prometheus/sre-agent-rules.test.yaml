@@ -1,0 +1,37 @@
+# promtool test rules prometheus/sre-agent-rules.test.yaml
+rule_files: [sre-agent-rules.yaml]
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      # A looping agent: five guard trips in half an hour.
+      - series: 'sre_agent_guard_trips_total{sre_guard="no_progress"}'
+        values: '0 1 2 3 4 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5'
+      # Tools: 30 calls a minute, 12 of them failing.
+      - series: 'sre_agent_tool_calls_total{gen_ai_tool_name="search_logs",sre_tool_ok="false"}'
+        values: '0+12x60'
+      - series: 'sre_agent_tool_calls_total{gen_ai_tool_name="get_service_red",sre_tool_ok="true"}'
+        values: '0+18x60'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: SREAgentLooping
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: The agent's loop guards fired more than three times in an hour.
+              runbook: observability/runbooks/agent-misbehaving.md#looping
+      - eval_time: 45m
+        alertname: SREAgentToolsFailing
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: More than 20% of the agent's tool calls are failing. It is investigating partly blind.
+              runbook: observability/runbooks/agent-misbehaving.md#tools-failing
+  - interval: 1m
+    input_series:
+      - series: 'sre_agent_investigations_total{sre_outcome="root_cause_found"}'
+        values: '0+1x60'
+    alert_rule_test:
+      - eval_time: 60m
+        alertname: SREAgentInvestigationsCrashing
+        exp_alerts: []

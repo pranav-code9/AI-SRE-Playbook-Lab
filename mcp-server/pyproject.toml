@@ -1,0 +1,30 @@
+[project]
+name = "sre-mcp"
+version = "0.1.0"
+description = "Chapter 4 MCP servers for The AI SRE Playbook: read tools, runbooks, and gated actions"
+requires-python = ">=3.11"
+dependencies = [
+  "investigator",          # the agent package: pip install -e ../agent first
+  "mcp>=2.2,<3",
+  "pyyaml>=6",
+  "anyio>=4",
+  "uvicorn>=0.30",
+  "sre-policy",            # pip install -e ../policies
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+sre-mcp = "sre_mcp.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "../agent/src", "../policies/src"]

@@ -1,0 +1,9 @@
+lab/config.env
+lab/runs/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+agent/runs/
+*.egg-info/
+.pytest_cache/

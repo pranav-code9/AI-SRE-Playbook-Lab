@@ -1,0 +1,81 @@
+{
+ "_about": "Scripted model responses for an offline walk-through of the case study (investigate --scripted). They reference evidence ids produced by the fixed triage sweep, so they only fit checkout_retry_storm.json.",
+ "HypothesizeOutput": [
+  {
+   "reasoning": "Checkout errors are up while its own traffic is flat. Payment is the only dependency with rising latency and traffic, and one release landed at 10:05, shortly before the errors began.",
+   "hypotheses": [
+    {"statement": "Payment is slow, so checkout's calls to it time out", "kind": "mechanism", "component": "payment", "explains": "H0",
+     "predictions": ["Payment latency rises after 10:05", "Failed checkouts contain slow Charge spans"]},
+    {"statement": "Checkout sends payment more requests than users generate, because it retries failed calls", "kind": "mechanism", "component": "checkout", "explains": "H0",
+     "predictions": ["Failed checkouts contain several Charge spans", "Payment request rate rises while checkout's stays flat"]},
+    {"statement": "Release otel-demo revision 3 changed how checkout calls payment", "kind": "root_cause", "component": "otel-demo revision 3", "explains": "H2",
+     "predictions": ["The release diff changes checkout's payment timeout or retry settings", "Errors begin shortly after 10:05"]}
+   ]
+  },
+  {"reasoning": "The current hypotheses cover the evidence; the remaining work is confirming timing and error detail.", "hypotheses": []}
+ ],
+ "PlanOutput": [
+  {
+   "reasoning": "A failed trace separates H1 (one slow Charge) from H2 (many Charges). The release diff tests H3 directly. Payment's request rate before and after tests H2's traffic prediction.",
+   "checks": [
+    {"tool": "summarize_trace", "args_json": "{\"trace_id\": \"err0001\"}", "hypothesis_ids": ["H1", "H2"],
+     "expected": [{"hypothesis_id": "H1", "if_true": "one long Charge span"}, {"hypothesis_id": "H2", "if_true": "several Charge spans"}]},
+    {"tool": "diff_release", "args_json": "{\"release\": \"otel-demo\", \"revision_a\": 2, \"revision_b\": 3}", "hypothesis_ids": ["H3"],
+     "expected": [{"hypothesis_id": "H3", "if_true": "checkout timeout or retry values change"}]},
+    {"tool": "compare_windows", "args_json": "{\"service\": \"payment\", \"metric\": \"request_rate\", \"before_start\": \"2026-09-22T09:50:00Z\", \"before_end\": \"2026-09-22T10:05:00Z\", \"after_start\": \"2026-09-22T10:10:00Z\", \"after_end\": \"2026-09-22T10:30:00Z\"}", "hypothesis_ids": ["H2"],
+     "expected": [{"hypothesis_id": "H2", "if_true": "payment request rate rises several-fold"}]}
+   ]
+  },
+  {
+   "reasoning": "Confirm the failure mode in checkout's own logs and pin the error onset to the release.",
+   "checks": [
+    {"tool": "search_logs", "args_json": "{\"service\": \"checkout\", \"level\": \"error\"}", "hypothesis_ids": ["H2", "H3"],
+     "expected": [{"hypothesis_id": "H2", "if_true": "errors mention repeated attempts"}]},
+    {"tool": "compare_windows", "args_json": "{\"service\": \"checkout\", \"metric\": \"error_rate\", \"before_start\": \"2026-09-22T09:50:00Z\", \"before_end\": \"2026-09-22T10:05:00Z\", \"after_start\": \"2026-09-22T10:10:00Z\", \"after_end\": \"2026-09-22T10:30:00Z\"}", "hypothesis_ids": ["H3"],
+     "expected": [{"hypothesis_id": "H3", "if_true": "error rate jumps after 10:05"}]}
+   ]
+  }
+ ],
+ "AssessOutput": [
+  {
+   "stances": [
+    {"hypothesis_id": "H1", "evidence_id": "E5", "supports": true, "note": "Payment latency is elevated over the window"},
+    {"hypothesis_id": "H1", "evidence_id": "E12", "supports": true, "note": "Every Charge attempt fails at about 40 ms, the configured timeout"},
+    {"hypothesis_id": "H2", "evidence_id": "E12", "supports": true, "note": "Checkout called Charge six times for one order"},
+    {"hypothesis_id": "H2", "evidence_id": "E14", "supports": true, "note": "Payment traffic up about 5x while checkout traffic is flat (E1)"},
+    {"hypothesis_id": "H3", "evidence_id": "E13", "supports": true, "note": "Revision 3 cut PAYMENT_TIMEOUT from 2s to 40ms and raised retries from 0 to 5"},
+    {"hypothesis_id": "H3", "evidence_id": "E12", "supports": true, "note": "Six attempts per order matches five retries"}
+   ],
+   "updates": [
+    {"hypothesis_id": "H1", "confidence": 0.7, "status": "supported"},
+    {"hypothesis_id": "H2", "confidence": 0.75, "status": "supported", "explains": "H1"},
+    {"hypothesis_id": "H3", "confidence": 0.75, "status": "supported"}
+   ],
+   "timeline": [{"at": "2026-09-22T10:05:00Z", "what": "checkout PAYMENT_TIMEOUT 2s -> 40ms, PAYMENT_MAX_RETRIES 0 -> 5", "evidence_id": "E13"}]
+  },
+  {
+   "stances": [
+    {"hypothesis_id": "H2", "evidence_id": "E15", "supports": true, "note": "Checkout logs report the charge failing after 6 attempts"},
+    {"hypothesis_id": "H3", "evidence_id": "E15", "supports": true, "note": "Failures are deadline-exceeded, consistent with the shortened timeout"},
+    {"hypothesis_id": "H3", "evidence_id": "E16", "supports": true, "note": "Checkout error rate jumps only after the 10:05 release"}
+   ],
+   "updates": [
+    {"hypothesis_id": "H1", "confidence": 0.75},
+    {"hypothesis_id": "H2", "confidence": 0.85},
+    {"hypothesis_id": "H3", "confidence": 0.9}
+   ],
+   "timeline": []
+  }
+ ],
+ "ReportOutput": [
+  {
+   "summary": "Release otel-demo revision 3 (10:05) cut checkout's payment timeout from 2s to 40ms and enabled five immediate retries (E13). Normal payment calls now exceed the timeout, so each order makes up to six Charge attempts (E12, E15), multiplying payment traffic about fivefold (E14). Payment slows under the extra load, more calls time out, and checkout errors rise from the moment of the release (E16). Autoscaling and node memory pressure followed (E11).",
+   "open_questions": ["Was the timeout change intended, and what value was meant?", "Did the evicted pods affect other services?"],
+   "proposed_actions": ["Roll back otel-demo to revision 2 (requires approval)", "Add backoff and a retry budget to checkout's payment client"],
+   "action_proposals": [
+    {"tool": "rollback_release", "args_json": "{\"release\": \"otel-demo\", \"to_revision\": 2}",
+     "reason": "Revision 3 cut checkout's payment timeout to 40ms and enabled five retries (E13); errors began after it (E16)"}
+   ]
+  }
+ ]
+}

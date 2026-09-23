@@ -1,0 +1,99 @@
+# Three identities, three levels of access (Chapters 2, 4 and 5).
+#
+#   sre-agent-read       the agent and the sre-read MCP server: reads cluster state, never Secrets
+#   sre-change-exporter  reads Helm history (stored in Secrets) and serves it redacted
+#   sre-actions          the sre-actions MCP server: allowed to roll the release back
+#
+# Namespace: otel-demo. Adjust names and resource lists to your chart. VERIFY
+# with `kubectl auth can-i --as=system:serviceaccount:otel-demo:<name> ...`.
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: sre-agent-read, namespace: otel-demo}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: sre-agent-read, namespace: otel-demo}
+rules:
+  - apiGroups: [""]
+    resources: [pods, events, services, configmaps]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, replicasets, statefulsets, daemonsets]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: sre-agent-read, namespace: otel-demo}
+subjects: [{kind: ServiceAccount, name: sre-agent-read, namespace: otel-demo}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: sre-agent-read}
+---
+# Node conditions are cluster-scoped.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata: {name: sre-agent-read-nodes}
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: sre-agent-read-nodes}
+subjects: [{kind: ServiceAccount, name: sre-agent-read, namespace: otel-demo}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: sre-agent-read-nodes}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: sre-change-exporter, namespace: otel-demo}
+---
+# Helm keeps release history in Secrets, and RBAC can't narrow this to Helm's
+# own Secrets. That's why only the exporter holds it, and redacts what it serves.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: sre-change-exporter, namespace: otel-demo}
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [replicasets, deployments]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: sre-change-exporter, namespace: otel-demo}
+subjects: [{kind: ServiceAccount, name: sre-change-exporter, namespace: otel-demo}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: sre-change-exporter}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: sre-actions, namespace: otel-demo}
+---
+# helm rollback re-applies every resource the chart manages and writes a new
+# release Secret, so this role is broad within the namespace. Keep one release
+# per namespace, and nothing else in it, so "the namespace" means "the release".
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: sre-actions, namespace: otel-demo}
+rules:
+  - apiGroups: ["", apps, autoscaling, batch, networking.k8s.io, policy]
+    resources: [secrets, configmaps, services, serviceaccounts, deployments, statefulsets, daemonsets,
+                replicasets, horizontalpodautoscalers, jobs, ingresses, networkpolicies, poddisruptionbudgets, pods]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # Only if your chart creates Roles. Kubernetes' escalation check still stops
+  # this account granting permissions it doesn't hold itself.
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings]
+    verbs: [get, list, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: sre-actions, namespace: otel-demo}
+subjects: [{kind: ServiceAccount, name: sre-actions, namespace: otel-demo}]
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: sre-actions}

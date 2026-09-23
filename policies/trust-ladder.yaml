@@ -1,0 +1,55 @@
+# The trust ladder for the lab. Every action tool has an entry; an action with
+# no entry is treated as `observe` (never offered, never run).
+#
+# Rungs, lowest to highest:
+#   observe     the agent may reason about it; nothing is shown or run (shadow)
+#   suggest     plans are shown to humans; the tool never executes
+#   approve     executes with a valid, unexpired approval of this exact plan
+#   autonomous  executes without approval, inside blast radius, rate limit
+#               and autonomy preconditions
+#
+# Promotion is a reviewed change to this file. Demotion is automatic: a bad
+# outcome lowers the effective rung in the state directory until a human
+# resets it.
+version: 1
+
+roles:
+  incident-commander:
+    - cli:pranav          # CLI approver name (example)
+    - slack:U000EXAMPLE   # Slack user id (example)
+
+defaults:
+  approval_ttl_minutes: 15
+
+actions:
+  rollback_release:
+    rung: approve
+    approvers: [incident-commander]
+    blast_radius:
+      namespaces: [otel-demo]
+      releases: [otel-demo]
+      max_revisions_back: 1       # only to the immediately previous revision
+      max_changed_values: 10      # a rollback that changes more than this is not routine
+      max_resources_changed: 3    # rendered resources; an unknown count counts as too many
+      allow_chart_change: false   # rolling back across chart versions needs a human plan
+    rate_limit:
+      max: 1
+      per_minutes: 30
+    autonomy:                     # consulted only at rung `autonomous`
+      min_agent_confidence: 0.9   # a capped ranking, not a probability: never enough alone
+      max_change_age_minutes: 60  # the release being undone landed recently
+      require_change_anchor: true # root cause backed by change evidence
+      require_complete_chain: true
+    verify:                       # checked after execution; a failure demotes
+      service: checkout
+      metric: error_rate
+      must_drop_by_percent: 50
+      after_minutes: 10
+    promotion:
+      to_approve:
+        min_suggestions_reviewed: 10
+        max_rejected_ratio: 0.2
+      to_autonomous:
+        min_approved_executions: 20
+        max_bad_outcomes: 0
+        min_eval_pass_rate: 0.95  # from the Chapter 6 evaluation harness

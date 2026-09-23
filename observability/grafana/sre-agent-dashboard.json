@@ -1,0 +1,225 @@
+{
+ "title": "AI SRE agent",
+ "uid": "sre-agent",
+ "schemaVersion": 39,
+ "version": 1,
+ "editable": true,
+ "time": {
+  "from": "now-7d",
+  "to": "now"
+ },
+ "refresh": "1m",
+ "tags": [
+  "sre-agent",
+  "chapter-7"
+ ],
+ "templating": {
+  "list": [
+   {
+    "name": "datasource",
+    "type": "datasource",
+    "query": "prometheus",
+    "label": "Prometheus"
+   }
+  ]
+ },
+ "panels": [
+  {
+   "type": "timeseries",
+   "title": "Investigations by outcome",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (sre_outcome) (increase(sre_agent_investigations_total[1h]))",
+     "legendFormat": "{{sre_outcome}}"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Escalation ratio (1d)",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sre_agent:escalation_ratio:1d",
+     "legendFormat": "escalated"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Investigation time",
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "histogram_quantile(0.5, sum by (le) (rate(sre_agent_investigation_duration_seconds_bucket[1h])))",
+     "legendFormat": "p50"
+    },
+    {
+     "refId": "B",
+     "expr": "histogram_quantile(0.9, sum by (le) (rate(sre_agent_investigation_duration_seconds_bucket[1h])))",
+     "legendFormat": "p90"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Tool calls by tool",
+   "gridPos": {
+    "x": 12,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (gen_ai_tool_name) (rate(sre_agent_tool_calls_total[5m]))",
+     "legendFormat": "{{gen_ai_tool_name}}"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Tool failure ratio",
+   "gridPos": {
+    "x": 0,
+    "y": 16,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sre_agent:tool_failure_ratio:30m",
+     "legendFormat": "failing"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit"
+    },
+    "overrides": []
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Guard trips",
+   "gridPos": {
+    "x": 12,
+    "y": 16,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (sre_guard) (increase(sre_agent_guard_trips_total[1h]))",
+     "legendFormat": "{{sre_guard}}"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Tokens",
+   "gridPos": {
+    "x": 0,
+    "y": 24,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sum by (gen_ai_token_type) (rate(gen_ai_client_token_usage_sum[5m]))",
+     "legendFormat": "{{gen_ai_token_type}}"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "title": "Model spend (1d)",
+   "gridPos": {
+    "x": 12,
+    "y": 24,
+    "w": 12,
+    "h": 8
+   },
+   "datasource": {
+    "type": "prometheus",
+    "uid": "${datasource}"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "expr": "sre_agent:cost_usd:increase1d",
+     "legendFormat": "USD"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD"
+    },
+    "overrides": []
+   }
+  }
+ ]
+}

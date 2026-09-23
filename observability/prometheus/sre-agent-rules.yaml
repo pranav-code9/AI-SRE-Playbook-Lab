@@ -1,0 +1,66 @@
+# Recording and alerting rules for the investigation agent (Chapter 7).
+#
+# Metric names assume the agent's OpenTelemetry metrics reach Prometheus through
+# the lab's collector, whose Prometheus export turns dots into underscores and
+# adds _total to counters and _seconds to second-based histograms. VERIFY the
+# exact names in your Prometheus before relying on these rules.
+groups:
+  - name: sre-agent-recording
+    rules:
+      - record: sre_agent:investigations:increase1d
+        expr: sum(increase(sre_agent_investigations_total[1d]))
+      - record: sre_agent:escalation_ratio:1d
+        expr: |
+          sum(increase(sre_agent_investigations_total{sre_outcome="escalated"}[1d]))
+            / sum(increase(sre_agent_investigations_total[1d]))
+      - record: sre_agent:duration_p90:1d
+        expr: histogram_quantile(0.9, sum by (le) (rate(sre_agent_investigation_duration_seconds_bucket[1d])))
+      - record: sre_agent:tool_failure_ratio:30m
+        expr: |
+          sum(rate(sre_agent_tool_calls_total{sre_tool_ok="false"}[30m]))
+            / sum(rate(sre_agent_tool_calls_total[30m]))
+      - record: sre_agent:cost_usd:increase1d
+        expr: sum(increase(sre_agent_cost_usd_total[1d]))
+
+  - name: sre-agent-alerts
+    rules:
+      - alert: SREAgentInvestigationsCrashing
+        expr: sum(increase(sre_agent_investigations_total{sre_outcome="error"}[1h])) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: The investigation agent crashed during an investigation.
+          runbook: observability/runbooks/agent-misbehaving.md#crashes
+
+      - alert: SREAgentToolsFailing
+        expr: sre_agent:tool_failure_ratio:30m > 0.2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: More than 20% of the agent's tool calls are failing. It is investigating partly blind.
+          runbook: observability/runbooks/agent-misbehaving.md#tools-failing
+
+      - alert: SREAgentLooping
+        expr: sum(increase(sre_agent_guard_trips_total[1h])) > 3
+        labels: {severity: warning}
+        annotations:
+          summary: The agent's loop guards fired more than three times in an hour.
+          runbook: observability/runbooks/agent-misbehaving.md#looping
+
+      - alert: SREAgentSlow
+        expr: sre_agent:duration_p90:1d > 300
+        labels: {severity: info}
+        annotations:
+          summary: 90th percentile investigation time is over five minutes (SLO).
+
+      - alert: SREAgentEscalatingTooOften
+        expr: sre_agent:escalation_ratio:1d > 0.5 and sre_agent:investigations:increase1d >= 5
+        labels: {severity: info}
+        annotations:
+          summary: The agent escalated more than half of today's investigations (SLO band 10-50%).
+
+      - alert: SREAgentSpendHigh
+        expr: sre_agent:cost_usd:increase1d > 20
+        labels: {severity: warning}
+        annotations:
+          summary: Agent model spend is over $20 in the last day.
+          runbook: observability/runbooks/agent-misbehaving.md#spend

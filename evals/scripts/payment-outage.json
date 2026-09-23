@@ -1,0 +1,54 @@
+{
+ "_about": "Scripted responses for the payment-outage variant: payment really is failing and a banner release is a decoy. Under the structural rules the agent can't anchor a non-change root cause, so it escalates with payment as the leading hypothesis.",
+ "HypothesizeOutput": [
+  {
+   "reasoning": "Checkout and payment errors rose together from about 10:05; payment traffic is flat. One release landed at 10:02.",
+   "hypotheses": [
+    {"statement": "The payment service is failing to process charges", "kind": "root_cause", "component": "payment", "explains": "H0",
+     "predictions": ["Failed checkouts contain one failing Charge call", "Payment logs show charge errors"]},
+    {"statement": "Release otel-demo revision 3 broke checkout", "kind": "root_cause", "component": "otel-demo revision 3", "explains": "H0",
+     "predictions": ["The release diff changes checkout or payment settings"]}
+   ]
+  },
+  {"reasoning": "No new explanations.", "hypotheses": []},
+  {"reasoning": "No new explanations.", "hypotheses": []}
+ ],
+ "PlanOutput": [
+  {"reasoning": "The diff tests H2 directly; a trace and payment's logs test H1.",
+   "checks": [
+    {"tool": "diff_release", "args_json": "{\"release\": \"otel-demo\", \"revision_a\": 2, \"revision_b\": 3}", "hypothesis_ids": ["H2"],
+     "expected": [{"hypothesis_id": "H2", "if_true": "checkout or payment values change"}]},
+    {"tool": "summarize_trace", "args_json": "{\"trace_id\": \"err0001\"}", "hypothesis_ids": ["H1"],
+     "expected": [{"hypothesis_id": "H1", "if_true": "one failing Charge span"}]},
+    {"tool": "search_logs", "args_json": "{\"service\": \"payment\", \"level\": \"error\"}", "hypothesis_ids": ["H1"],
+     "expected": [{"hypothesis_id": "H1", "if_true": "charge errors"}]}
+   ]},
+  {"reasoning": "Re-check.", "checks": [
+    {"tool": "summarize_trace", "args_json": "{\"trace_id\": \"err0001\"}", "hypothesis_ids": ["H1"], "expected": []}]},
+  {"reasoning": "Re-check.", "checks": [
+    {"tool": "summarize_trace", "args_json": "{\"trace_id\": \"err0001\"}", "hypothesis_ids": ["H1"], "expected": []}]}
+ ],
+ "AssessOutput": [
+  {
+   "stances": [
+    {"hypothesis_id": "H1", "evidence_id": "E5", "supports": true, "note": "Payment's own error rate is high while its traffic is flat"},
+    {"hypothesis_id": "H1", "evidence_id": "E13", "supports": true, "note": "One Charge call per order, failing fast: payment is refusing, not slow"},
+    {"hypothesis_id": "H1", "evidence_id": "E14", "supports": true, "note": "Payment logs report the card processor unreachable"},
+    {"hypothesis_id": "H2", "evidence_id": "E12", "supports": false, "note": "Revision 3 only changed the frontend banner text"}
+   ],
+   "updates": [
+    {"hypothesis_id": "H1", "confidence": 0.85, "status": "supported"},
+    {"hypothesis_id": "H2", "confidence": 0.05, "status": "refuted", "refuted_reason": "The release only changed frontend banner text; checkout and payment settings are untouched"}
+   ],
+   "timeline": []
+  }
+ ],
+ "ReportOutput": [
+  {
+   "summary": "Payment is failing charges on its own: its error rate is high with flat traffic (E5), each failed order makes a single fast-failing Charge call (E13), and payment logs report the card processor unreachable (E14). The 10:02 release only changed frontend banner text (E12) and is ruled out.",
+   "open_questions": ["Is the card processor having an outage?", "Is payment's connectivity to the processor healthy?"],
+   "proposed_actions": ["Check the payment provider's status page", "Page the payments team"],
+   "action_proposals": []
+  }
+ ]
+}

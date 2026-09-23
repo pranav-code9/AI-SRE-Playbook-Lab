@@ -1,0 +1,12 @@
+# Healthy state. The checkout image repository and tag are passed with --set
+# by lab/scripts/common.sh, so this file needs no project-specific values.
+#
+# VERIFY against the pinned chart's values.yaml: the component key
+# ("checkout") and the envOverrides key.
+components:
+  checkout:
+    envOverrides:
+      - name: PAYMENT_TIMEOUT
+        value: "2s"
+      - name: PAYMENT_MAX_RETRIES
+        value: "0"

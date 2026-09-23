@@ -1,0 +1,38 @@
+# Service level objectives for the investigation agent (Chapter 7).
+# Each names its indicator and where the data comes from. Thresholds are
+# starting points to tune against your own history.
+slos:
+  - name: accuracy-replayed
+    objective: Nightly evaluation pass rate at or above the bar for the agent's highest rung
+    indicator: evals/results.json pass_rate (Chapter 6), with 0 confidently wrong runs
+    window: each nightly run
+    on_breach: block promotions; investigate before the next release of prompts, model or tools
+  - name: accuracy-in-production
+    objective: 90% of reviewed suggestions agreed with, over 28 days
+    indicator: sre-policy feedback verdicts in the audit log (Chapter 5)
+    window: 28 days
+    on_breach: demote actions that depend on the diagnosis; review disagreements
+  - name: completion
+    objective: 99% of investigations finish without crashing
+    indicator: sre_agent_investigations_total, outcome=error versus all
+    window: 28 days
+    alert: SREAgentInvestigationsCrashing
+  - name: time-to-report
+    objective: 90% of investigations report within 5 minutes
+    indicator: sre_agent_investigation_duration_seconds, p90
+    window: 1 day
+    alert: SREAgentSlow
+  - name: escalation-band
+    objective: Between 10% and 50% of investigations escalate
+    indicator: sre_agent_investigations_total by outcome
+    window: 1 day
+    note: >-
+      Too many escalations and the agent isn't saving anyone time. Too few, on
+      real incident mixes, suggests it's concluding when it shouldn't. Both ends
+      matter.
+    alert: SREAgentEscalatingTooOften
+  - name: cost
+    objective: Under $1 per investigation on average, under $20 per day
+    indicator: sre_agent_cost_usd_total, sre_agent_investigations_total
+    window: 1 day
+    alert: SREAgentSpendHigh

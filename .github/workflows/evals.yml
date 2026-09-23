@@ -1,0 +1,80 @@
+# Two tiers of evaluation (Chapter 6).
+#
+# Every push and pull request: all unit tests, plus the scripted evaluation,
+# which costs nothing and fails on any regression against the stored baseline.
+#
+# Nightly, on demand, or when a pull request is labelled `run-evals`: the real
+# model against all ten scenarios, three trials each. Needs the provider's API
+# key as a secret and the model string in the EVAL_MODEL repository variable.
+
+name: evals
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, labeled]
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  tests-and-scripted-evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          pip install -e "agent[dev]" -e "policies[dev]"
+          pip install -e "mcp-server[dev]" -e "evals[dev]" -e "observability[dev]" -e "rollout[dev]"
+      - name: Unit tests
+        run: |
+          (cd agent && pytest -q)
+          (cd policies && pytest -q)
+          (cd mcp-server && pytest -q)
+          (cd evals && pytest -q)
+          (cd observability && pytest -q)
+          (cd rollout && pytest -q)
+      - name: Scripted evaluation
+        working-directory: evals
+        run: sre-evals run --scripted --trials 1 --out results.json --report report.md --baseline baselines/scripted.json
+      - name: Summary
+        if: always()
+        working-directory: evals
+        run: cat report.md >> "$GITHUB_STEP_SUMMARY" || true
+
+  model-evals:
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-evals'))
+    runs-on: ubuntu-latest
+    needs: tests-and-scripted-evals
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          pip install -e "agent[anthropic]" -e "evals[dev]"
+      - name: Model evaluation
+        working-directory: evals
+        run: |
+          BASELINE=""
+          if [ -f baselines/model.json ]; then BASELINE="--baseline baselines/model.json"; fi
+          sre-evals run --model "${{ vars.EVAL_MODEL }}" --trials 3 \
+            --price-in "${{ vars.EVAL_PRICE_IN || 0 }}" --price-out "${{ vars.EVAL_PRICE_OUT || 0 }}" \
+            --out results.json --report report.md $BASELINE
+      - name: Summary
+        if: always()
+        working-directory: evals
+        run: cat report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: evals/results.json

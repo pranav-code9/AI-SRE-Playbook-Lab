@@ -1,0 +1,244 @@
+{
+ "_about": "Chapter 7: a model that keeps rewording the same log search. Every search returns 'new' evidence, so the no-new-evidence rule never fires; only the loop guards stop it. Replay with and without --no-guards.",
+ "_simulated": {
+  "cost_per_call": 0.02,
+  "input_tokens_per_call": 6000,
+  "output_tokens_per_call": 400
+ },
+ "HypothesizeOutput": [
+  {
+   "reasoning": "Checkout errors with elevated payment latency. The logs should say what's failing.",
+   "hypotheses": [
+    {
+     "statement": "Payment is slow, so checkout's calls to it time out",
+     "kind": "mechanism",
+     "component": "payment",
+     "explains": "H0",
+     "predictions": [
+      "checkout logs show timeouts"
+     ]
+    },
+    {
+     "statement": "Checkout is failing for an internal reason",
+     "kind": "mechanism",
+     "component": "checkout",
+     "explains": "H0",
+     "predictions": [
+      "checkout logs show internal errors"
+     ]
+    }
+   ]
+  },
+  {
+   "reasoning": "The logs are noisy; a sharper search should separate the hypotheses.",
+   "hypotheses": []
+  },
+  {
+   "reasoning": "The logs are noisy; a sharper search should separate the hypotheses.",
+   "hypotheses": []
+  },
+  {
+   "reasoning": "The logs are noisy; a sharper search should separate the hypotheses.",
+   "hypotheses": []
+  },
+  {
+   "reasoning": "The logs are noisy; a sharper search should separate the hypotheses.",
+   "hypotheses": []
+  },
+  {
+   "reasoning": "The logs are noisy; a sharper search should separate the hypotheses.",
+   "hypotheses": []
+  },
+  {
+   "reasoning": "The logs are noisy; a sharper search should separate the hypotheses.",
+   "hypotheses": []
+  },
+  {
+   "reasoning": "The logs are noisy; a sharper search should separate the hypotheses.",
+   "hypotheses": []
+  }
+ ],
+ "PlanOutput": [
+  {
+   "reasoning": "Search checkout's logs for 'error' to see which failure dominates.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"pattern\": \"error\"}",
+     "hypothesis_ids": [
+      "H1",
+      "H2"
+     ],
+     "expected": []
+    }
+   ]
+  },
+  {
+   "reasoning": "Search checkout's logs for 'timeout' to see which failure dominates.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"pattern\": \"timeout\"}",
+     "hypothesis_ids": [
+      "H1",
+      "H2"
+     ],
+     "expected": []
+    }
+   ]
+  },
+  {
+   "reasoning": "Search checkout's logs for 'deadline' to see which failure dominates.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"pattern\": \"deadline\"}",
+     "hypothesis_ids": [
+      "H1",
+      "H2"
+     ],
+     "expected": []
+    }
+   ]
+  },
+  {
+   "reasoning": "Search checkout's logs for 'charge' to see which failure dominates.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"pattern\": \"charge\"}",
+     "hypothesis_ids": [
+      "H1",
+      "H2"
+     ],
+     "expected": []
+    }
+   ]
+  },
+  {
+   "reasoning": "Search checkout's logs for 'retry' to see which failure dominates.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"pattern\": \"retry\"}",
+     "hypothesis_ids": [
+      "H1",
+      "H2"
+     ],
+     "expected": []
+    }
+   ]
+  },
+  {
+   "reasoning": "Search checkout's logs for 'fail' to see which failure dominates.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"pattern\": \"fail\"}",
+     "hypothesis_ids": [
+      "H1",
+      "H2"
+     ],
+     "expected": []
+    }
+   ]
+  },
+  {
+   "reasoning": "Search checkout's logs for 'context' to see which failure dominates.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"pattern\": \"context\"}",
+     "hypothesis_ids": [
+      "H1",
+      "H2"
+     ],
+     "expected": []
+    }
+   ]
+  },
+  {
+   "reasoning": "Search checkout's logs for 'payment' to see which failure dominates.",
+   "checks": [
+    {
+     "tool": "search_logs",
+     "args_json": "{\"service\": \"checkout\", \"pattern\": \"payment\"}",
+     "hypothesis_ids": [
+      "H1",
+      "H2"
+     ],
+     "expected": []
+    }
+   ]
+  }
+ ],
+ "AssessOutput": [
+  {
+   "stances": [
+    {
+     "hypothesis_id": "H1",
+     "evidence_id": "E12",
+     "supports": true,
+     "note": "checkout logs mention a deadline being exceeded"
+    }
+   ],
+   "updates": [
+    {
+     "hypothesis_id": "H1",
+     "confidence": 0.35
+    },
+    {
+     "hypothesis_id": "H2",
+     "confidence": 0.25
+    }
+   ],
+   "timeline": []
+  },
+  {
+   "stances": [],
+   "updates": [],
+   "timeline": []
+  },
+  {
+   "stances": [],
+   "updates": [],
+   "timeline": []
+  },
+  {
+   "stances": [],
+   "updates": [],
+   "timeline": []
+  },
+  {
+   "stances": [],
+   "updates": [],
+   "timeline": []
+  },
+  {
+   "stances": [],
+   "updates": [],
+   "timeline": []
+  },
+  {
+   "stances": [],
+   "updates": [],
+   "timeline": []
+  },
+  {
+   "stances": [],
+   "updates": [],
+   "timeline": []
+  }
+ ],
+ "ReportOutput": [
+  {
+   "summary": "The investigation couldn't separate the hypotheses from checkout's logs alone (E12). Payment latency is elevated (E5).",
+   "open_questions": [
+    "What changed around 10:05?",
+    "How many payment calls does each checkout make?"
+   ],
+   "proposed_actions": [],
+   "action_proposals": []
+  }
+ ]
+}

@@ -1,0 +1,63 @@
+# Encoded version of checkout-errors.md. Bump `version` in both files together.
+# tests/test_runbooks.py fails if a step names a tool that doesn't exist or
+# passes arguments the tool no longer accepts.
+name: checkout-errors
+version: 3
+title: Checkout error rate above SLO
+source: checkout-errors.md
+alert: checkout-error-rate-slo
+params:
+  service: checkout
+steps:
+  - id: symptom
+    kind: diagnosis
+    title: Confirm the symptom
+    tool: get_service_red
+    args: {service: "{service}"}
+  - id: dependencies
+    kind: diagnosis
+    title: What checkout depends on
+    tool: get_dependencies
+    args: {service: "{service}", direction: downstream}
+  - id: payment
+    kind: diagnosis
+    title: Payment, the usual suspect
+    tool: get_service_red
+    args: {service: payment}
+  - id: recent-deploys
+    kind: diagnosis
+    title: Recent deploys
+    tool: list_changes
+    args: {}
+  - id: failed-order
+    kind: diagnosis
+    title: Failed orders
+    tool: search_traces
+    args: {service: "{service}", errors_only: true, limit: 3}
+  - id: provider-status
+    kind: judgment
+    title: Payment provider status
+    guidance: >-
+      Check the payment provider's status page. It's outside our systems, so no
+      tool reads it. If the provider reports an incident, follow the
+      provider-outage runbook instead.
+  - id: rollback
+    kind: action
+    title: Roll back a recent release
+    tool: rollback_release
+    when: A deploy in the last hour changed checkout, and errors began after it.
+    requires: Incident commander approval
+  - id: maintenance-banner
+    kind: action
+    title: Checkout maintenance banner
+    when: The payment provider reports an outage.
+    requires: Incident commander approval
+    guidance: Not automated. Toggle the banner in the admin console.
+  - id: page-payments
+    kind: judgment
+    title: Page the payments team
+    guidance: If neither a recent deploy nor a provider outage explains the errors.
+  - id: updates
+    kind: judgment
+    title: Incident channel updates
+    guidance: Post an update every 15 minutes.
