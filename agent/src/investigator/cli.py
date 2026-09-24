@@ -14,6 +14,7 @@ Against the lab (see README.md before doing this):
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import logging
 import sys
@@ -50,7 +51,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--changes-url", help="read change history from sre-change-exporter instead of helm directly (live)")
     p.add_argument("--neo4j-uri", help="use the Chapter 2 topology graph instead of Jaeger's dependency view (live)")
     p.add_argument("--neo4j-user", default="neo4j")
-    p.add_argument("--neo4j-password")
+    p.add_argument("--neo4j-password", default=os.environ.get("NEO4J_PASSWORD"), help="defaults to $NEO4J_PASSWORD")
 
     p.add_argument("--no-structural-rules", action="store_true",
                    help="Chapter 3 baseline: no change sweep, confidence rules or why-chain requirement")

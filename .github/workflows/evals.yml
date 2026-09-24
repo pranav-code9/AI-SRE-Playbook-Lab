@@ -4,7 +4,7 @@
 # which costs nothing and fails on any regression against the stored baseline.
 #
 # Nightly, on demand, or when a pull request is labelled `run-evals`: the real
-# model against all ten scenarios, three trials each. Needs the provider's API
+# model against all twelve scenarios, three trials each. Needs the provider's API
 # key as a secret and the model string in the EVAL_MODEL repository variable.
 
 name: evals

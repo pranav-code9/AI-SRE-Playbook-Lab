@@ -5,9 +5,9 @@ different service, that's a call edge. The builder samples recent traces,
 extracts edges and workload mappings, and merges them into Neo4j with a
 last-seen time, so the graph follows the system as it changes.
 
+    export NEO4J_PASSWORD=...        # from your secret store, never on the command line
     build-topology --jaeger-url http://localhost:8080/jaeger/ui \\
-                   --neo4j-uri bolt://localhost:7687 --neo4j-password <password> \\
-                   --every 300
+                   --neo4j-uri bolt://localhost:7687 --every 300
 
 Requires the neo4j driver: pip install -e ".[neo4j]"
 """
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -101,7 +102,8 @@ UNWIND $edges AS e
 MERGE (a:Service {name: e.caller})
 MERGE (b:Service {name: e.callee})
 MERGE (a)-[c:CALLS]->(b)
-SET c.last_seen = datetime($seen_at),
+SET c.last_seen = CASE WHEN c.last_seen IS NULL OR datetime($seen_at) > c.last_seen
+                   THEN datetime($seen_at) ELSE c.last_seen END,
     c.calls = coalesce(c.calls, 0) + e.calls,
     c.errors = coalesce(c.errors, 0) + e.errors,
     c.operations = [op IN coalesce(c.operations, []) WHERE NOT op IN e.operations] + e.operations
@@ -189,11 +191,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--jaeger-url", default="http://localhost:8080/jaeger/ui")
     p.add_argument("--neo4j-uri", default="bolt://localhost:7687")
     p.add_argument("--neo4j-user", default="neo4j")
-    p.add_argument("--neo4j-password", required=True)
+    p.add_argument("--neo4j-password", default=os.environ.get("NEO4J_PASSWORD"),
+                   help="defaults to $NEO4J_PASSWORD; prefer the variable, which stays out of shell history")
     p.add_argument("--lookback-minutes", type=int, default=15)
     p.add_argument("--per-service", type=int, default=20, help="traces sampled per service each run")
     p.add_argument("--every", type=int, default=0, help="seconds between runs; 0 runs once")
     a = p.parse_args(argv)
+    if not a.neo4j_password:
+        p.error("set NEO4J_PASSWORD (or pass --neo4j-password)")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
     from neo4j import GraphDatabase

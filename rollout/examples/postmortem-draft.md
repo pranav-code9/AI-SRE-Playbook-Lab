@@ -8,7 +8,7 @@ This review is blameless. It asks how the system made this failure possible and 
 
 _The agent's summary, to be checked and rewritten by the team:_
 
-> Release otel-demo revision 7 (10:05) cut checkout's payment timeout from 2s to 40ms and enabled five immediate retries (E13). Payment's slowest calls already ran past 40ms, so the tail of every order's Charge attempts began timing out and retrying, up to six attempts each (E12, E15), multiplying payment traffic about fivefold (E14). Payment slows under the extra load, more calls time out, and checkout errors rise from the moment of the release (E16). Autoscaling and node memory pressure followed (E11).
+> Release otel-demo revision 7 (10:05) cut checkout's payment timeout from 2s to 40ms and enabled five immediate retries (E13). Payment's slowest calls already ran past 40ms, so the tail of every order's Charge attempts began timing out and retrying, up to six attempts each (E12, E15). The retries added load, payment slowed, more calls missed the deadline, and the loop fed itself until payment traffic was about five times normal (E14). Checkout errors rose from the moment of the release (E16). Autoscaling and node memory pressure followed (E11).
 
 ## Impact
 

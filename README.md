@@ -1,7 +1,7 @@
 # The AI SRE Playbook: companion code
 
-Code for *The AI SRE Playbook: Building Trustworthy Incident Agents with
-LangGraph, OpenTelemetry, and Kubernetes*.
+Code for *The AI SRE Playbook: Designing, Governing and Evaluating AI Agents
+for Incident Response*.
 
 The book follows one incident, a checkout retry storm on GKE, from the first
 page through an agent that investigates it, the guardrails that decide what the
